@@ -1,0 +1,84 @@
+name: fork-build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  REGISTRY: ghcr.io
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v3
+      - name: Unit tests (install + format + lint + typecheck + unit, chained by mise)
+        run: mise run ci-unit
+        working-directory: server
+      - name: Medium tests (SQLite — the only engine; blocking gate)
+        run: mise run ci-medium
+        working-directory: server
+  build-push:
+    needs: test
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/immich-sqlite
+          tags: |
+            type=raw,value={{tag}},enable=${{ github.ref_type == 'tag' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_ID=${{ github.run_id }}
+            BUILD_IMAGE=ghcr.io/${{ github.repository_owner }}/immich-sqlite
+            BUILD_SOURCE_REF=${{ github.ref_name }}
+            BUILD_SOURCE_COMMIT=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+      - name: Smoke test image
+        run: |
+          docker pull ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }}
+          docker run --rm --entrypoint "" ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }} \
+            node -e 'const p=require("/usr/src/app/server/package.json"); if(!p.version) process.exit(1); console.log("server pkg version:", p.version)'
+          docker run --rm --entrypoint "" ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }} \
+            test -f /build/www/index.html && echo "web bundle present"
+          # real boot smoke: server must serve HTTP with zero product config,
+          # and the SQLite library DB + embedded queue DB must land on /data
+          docker volume create smoke-data
+          docker run -d --name immich-smoke -p 2283:2283 -v smoke-data:/data \
+            ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }}
+          ok=""
+          for i in $(seq 1 36); do
+            if curl -fsS http://localhost:2283/api/server/version; then ok=1; break; fi
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { docker logs immich-smoke; exit 1; }
+          docker exec immich-smoke test -f /data/immich.db && echo "library DB on /data volume: OK"
+          docker exec immich-smoke test -f /data/immich-queue.db && echo "queue DB on /data volume: OK"
+          docker rm -f immich-smoke
+          docker volume rm smoke-data

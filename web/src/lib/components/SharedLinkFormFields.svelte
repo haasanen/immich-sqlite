@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { BROWSE_ONLY } from '$lib/fork';
   import SharedLinkExpiration from '$lib/components/SharedLinkExpiration.svelte';
   import { Field, HelperText, Input, PasswordInput, Switch, Text } from '@immich/ui';
   import { t } from 'svelte-i18n';
@@ -60,7 +61,9 @@
     <Switch bind:checked={allowDownload} />
   </Field>
 
-  <Field label={$t('allow_public_user_to_upload')}>
-    <Switch bind:checked={allowUpload} />
-  </Field>
+  {#if !BROWSE_ONLY}
+    <Field label={$t('allow_public_user_to_upload')}>
+      <Switch bind:checked={allowUpload} />
+    </Field>
+  {/if}
 </div>

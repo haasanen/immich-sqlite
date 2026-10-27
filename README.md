@@ -12,6 +12,10 @@
 <img src="design/immich-logo-stacked-light.svg" width="300" title="Login With Custom URL">
 </p>
 <h3 align="center">High performance self-hosted photo and video management solution</h3>
+
+<p align="center"><strong>Fork:</strong> this tree runs Immich on SQLite with an embedded queue —
+no Postgres, no Redis — and ships browse-only mode for read-only external libraries.
+See <a href="FORK-DEPLOY.md">FORK-DEPLOY.md</a> for the one-service compose and env reference, and <a href="FORK-SYNC.md">FORK-SYNC.md</a> for how upstream releases are ported onto this fork.</p>
 <br/>
 <a href="https://immich.app">
 <img src="design/immich-screenshots.png" title="Main Screenshot">

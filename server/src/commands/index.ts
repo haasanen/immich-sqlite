@@ -9,7 +9,6 @@ import {
 import { DisableOAuthLogin, EnableOAuthLogin } from 'src/commands/oauth-login.js';
 import { DisablePasswordLoginCommand, EnablePasswordLoginCommand } from 'src/commands/password-login.js';
 import { PromptPasswordResetQuestions, ResetAdminPasswordCommand } from 'src/commands/reset-admin-password.command.js';
-import { SchemaCheck } from 'src/commands/schema-check.js';
 import { VersionCommand } from 'src/commands/version.command.js';
 
 export const commandsAndQuestions = [
@@ -29,5 +28,4 @@ export const commandsAndQuestions = [
   ChangeMediaLocationCommand,
   PromptMediaLocationQuestions,
   PromptConfirmMoveQuestions,
-  SchemaCheck,
 ];

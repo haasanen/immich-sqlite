@@ -120,12 +120,12 @@ const AssetEditsCreateSchema = z
   .meta({ id: 'AssetEditsCreateDto' });
 
 const AssetEditActionItemResponseSchema = AssetEditActionItemSchema.extend({
-  id: z.uuidv4().describe('Asset edit ID'),
+  id: z.uuid().describe('Asset edit ID'),
 }).meta({ id: 'AssetEditActionItemResponseDto' });
 
 const AssetEditsResponseSchema = z
   .object({
-    assetId: z.uuidv4().describe('Asset ID these edits belong to'),
+    assetId: z.uuid().describe('Asset ID these edits belong to'),
     edits: z.array(AssetEditActionItemResponseSchema).describe('List of edit actions applied to the asset'),
   })
   .meta({ id: 'AssetEditsResponseDto' });

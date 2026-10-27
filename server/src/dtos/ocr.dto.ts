@@ -3,9 +3,9 @@ import z from 'zod';
 
 const AssetOcrResponseSchema = z
   .object({
-    assetId: z.uuidv4(),
+    assetId: z.uuid(),
     boxScore: z.number().meta({ format: 'double' }).describe('Confidence score for text detection box'),
-    id: z.uuidv4(),
+    id: z.uuid(),
     text: z.string().describe('Recognized text'),
     textScore: z.number().meta({ format: 'double' }).describe('Confidence score for text recognition'),
     x1: z.number().meta({ format: 'double' }).describe('Normalized x coordinate of box corner 1 (0-1)'),

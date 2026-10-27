@@ -101,15 +101,17 @@ describe(MetadataService.name, () => {
   });
 
   describe('onBootstrapEvent', () => {
-    it('should pause and resume queue during init', async () => {
+    it('should pause and resume queue during init and skip the Postgres-only geodata import', async () => {
       mocks.job.pause.mockResolvedValue();
       mocks.map.init.mockResolvedValue();
       mocks.job.resume.mockResolvedValue();
 
       await sut.onBootstrap();
 
+      // Fork reality: the geodata importer runs Postgres-only DDL (GiST earth-box
+      // indexes), so the SQLite engine skips it entirely — map.init must not run.
       expect(mocks.job.pause).toHaveBeenCalledTimes(1);
-      expect(mocks.map.init).toHaveBeenCalledTimes(1);
+      expect(mocks.map.init).not.toHaveBeenCalled();
       expect(mocks.job.resume).toHaveBeenCalledTimes(1);
     });
   });
