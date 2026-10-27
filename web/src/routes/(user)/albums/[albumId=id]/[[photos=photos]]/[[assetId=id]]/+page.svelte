@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { BROWSE_ONLY } from '$lib/fork';
   import { goto, invalidate, onNavigate } from '$app/navigation';
   import { navigating } from '$app/state';
   import { scrollMemoryClearer } from '$lib/actions/scroll-memory';
@@ -314,6 +315,7 @@
   const { Cast } = $derived(getGlobalActions($t));
   const Actions = $derived(getAlbumActions($t, album));
   const { AddAssets, Upload } = $derived(getAlbumAssetsActions($t, album, timelineMultiSelectManager.assets));
+  const albumUploadActions = BROWSE_ONLY ? [] : [Upload];
 
   const Close = $derived({
     title: $t('go_back'),
@@ -336,7 +338,10 @@
   onAlbumUpdate={(album) => refreshAlbum(album)}
   onAssetsDelete={() => refreshAlbum()}
 />
-<CommandPaletteDefaultProvider name={$t('album')} actions={[AddAssets, Upload, Close, ...Object.values(Actions)]} />
+<CommandPaletteDefaultProvider
+  name={$t('album')}
+  actions={[AddAssets, ...albumUploadActions, Close, ...Object.values(Actions)]}
+/>
 
 <div class="flex overflow-hidden" use:scrollMemoryClearer={{ routeStartsWith: Route.albums() }}>
   <div class="relative w-full shrink">
@@ -578,7 +583,7 @@
           {/snippet}
 
           {#snippet trailing()}
-            <HeaderActionButton action={Upload} />
+            {#if !BROWSE_ONLY}<HeaderActionButton action={Upload} />{/if}
             <HeaderActionButton action={AddAssets} />
           {/snippet}
         </ControlAppBar>

@@ -1,4 +1,3 @@
-import { BullModule } from '@nestjs/bullmq';
 import { Inject, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
@@ -9,7 +8,7 @@ import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { commandsAndQuestions } from 'src/commands/index.js';
 import { IWorker } from 'src/constants.js';
 import { controllers } from 'src/controllers/index.js';
-import { ImmichWorker } from 'src/enum.js';
+import { ImmichWorker, QueueName } from 'src/enum.js';
 import { MaintenanceAuthGuard } from 'src/maintenance/maintenance-auth.guard.js';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository.js';
 import { MaintenanceWebsocketRepository } from 'src/maintenance/maintenance-websocket.repository.js';
@@ -25,6 +24,7 @@ import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { DatabaseRepository } from 'src/repositories/database.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
 import { repositories } from 'src/repositories/index.js';
+import { LocalQueueModule } from 'src/repositories/local-queue.module.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { ProcessRepository } from 'src/repositories/process.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
@@ -53,7 +53,7 @@ const commonMiddleware = [
 const apiMiddleware = [FileUploadInterceptor, ...commonMiddleware, { provide: APP_GUARD, useClass: AuthGuard }];
 
 const configRepository = new ConfigRepository();
-const { bull, cls, database, otel } = configRepository.getEnv();
+const { cls, database, otel } = configRepository.getEnv();
 
 const commonImports = [
   ClsModule.forRoot(cls.config),
@@ -61,7 +61,13 @@ const commonImports = [
   OpenTelemetryModule.forRoot(otel),
 ];
 
-const bullImports = [BullModule.forRoot(bull.config), BullModule.registerQueue(...bull.queues)];
+// Fork: embedded in-process queue (no Redis/BullMQ). Queue tuning lives here,
+// not in env config — upstream's BullMQ defaultJobOptions values are preserved.
+const queueImports = [
+  LocalQueueModule.register(Object.values(QueueName), {
+    defaultJobOptions: { attempts: 1, removeOnComplete: true, removeOnFail: false },
+  }),
+];
 
 // eslint-disable-next-line unicorn/no-top-level-side-effects
 configureUserAgent();
@@ -103,7 +109,7 @@ export class BaseModule implements OnModuleInit, OnModuleDestroy {
 }
 
 @Module({
-  imports: [...bullImports, ...commonImports, ScheduleModule.forRoot()],
+  imports: [...queueImports, ...commonImports, ScheduleModule.forRoot()],
   controllers: [...controllers],
   providers: [...common, ...apiMiddleware, { provide: IWorker, useValue: ImmichWorker.Api }],
 })
@@ -145,13 +151,13 @@ export class MaintenanceModule {
 }
 
 @Module({
-  imports: [...bullImports, ...commonImports],
+  imports: [...queueImports, ...commonImports],
   providers: [...common, { provide: IWorker, useValue: ImmichWorker.Microservices }, SchedulerRegistry],
 })
 export class MicroservicesModule extends BaseModule {}
 
 @Module({
-  imports: [...bullImports, ...commonImports],
+  imports: [...queueImports, ...commonImports],
   providers: [...common, ...commandsAndQuestions, SchedulerRegistry],
 })
 export class ImmichAdminModule implements OnModuleDestroy {

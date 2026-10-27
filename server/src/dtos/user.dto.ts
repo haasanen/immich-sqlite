@@ -25,7 +25,7 @@ export class UserUpdateMeDto extends createZodDto(UserUpdateMeSchema) {}
 
 export const UserResponseSchema = z
   .object({
-    id: z.uuidv4().describe('User ID'),
+    id: z.uuid().describe('User ID'),
     name: z.string().describe('User name'),
     email: toEmail.describe('User email'),
     profileImagePath: z.string().describe('Profile image path'),
@@ -69,7 +69,7 @@ export const mapUser = (entity: MaybeDehydrated<User | UserAdmin>): UserResponse
 const UserAdminSearchSchema = z
   .object({
     withDeleted: stringToBool.optional().describe('Include deleted users'),
-    id: z.uuidv4().optional().describe('User ID filter'),
+    id: z.uuid().optional().describe('User ID filter'),
   })
   .meta({ id: 'UserAdminSearchDto' });
 
@@ -118,7 +118,7 @@ export class UserAdminDeleteDto extends createZodDto(UserAdminDeleteSchema) {}
 
 const UserAdminResponseSchema = UserResponseSchema.extend({
   clusterGroupId: z
-    .uuidv4()
+    .uuid()
     .describe('Cluster group the user is a member of')
     .meta(new HistoryBuilder().added('v3.2.0').getExtensions()),
   storageLabel: z.string().nullable().describe('Storage label'),

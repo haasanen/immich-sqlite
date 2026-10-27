@@ -3,7 +3,6 @@ import { CommandFactory } from 'nest-commander';
 import { ChildProcess, fork } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { PostgresError } from 'postgres';
 import { DatabaseLock, ExitCode, ImmichWorker, LogLevel, SystemMetadataKey } from 'src/enum.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { SystemMetadataRepository } from 'src/repositories/system-metadata.repository.js';
@@ -53,7 +52,7 @@ class Workers {
       return value?.isMaintenanceMode || false;
     } catch (error: Error | any) {
       // Table doesn't exist (migrations haven't run yet)
-      if ((error as PostgresError).code === '42P01') {
+      if ((error as { code?: string }).code === 'SQLITE_ERROR' && /no such table/i.test(error.message ?? '')) {
         return false;
       }
 
@@ -72,12 +71,14 @@ class Workers {
       isLocked = await kysely.connection().execute(async (conn) => {
         const { rows } = await sql<{
           pg_try_advisory_lock: boolean;
-        }>`SELECT pg_try_advisory_lock(${DatabaseLock.MaintenanceOperation})`.execute(conn);
+        }>`SELECT pg_try_advisory_lock(${DatabaseLock.MaintenanceOperation}) as pg_try_advisory_lock`.execute(conn);
 
         const isLocked = rows[0].pg_try_advisory_lock;
 
         if (isLocked) {
-          await sql`SELECT pg_advisory_unlock(${DatabaseLock.MaintenanceOperation})`.execute(conn);
+          await sql`SELECT pg_advisory_unlock(${DatabaseLock.MaintenanceOperation}) as pg_advisory_unlock`.execute(
+            conn,
+          );
         }
 
         return isLocked;

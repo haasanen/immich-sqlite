@@ -10,6 +10,7 @@ packages:
   - packages/*
 allowBuilds:
   '@nestjs/core': false
+  better-sqlite3: true
   '@parcel/watcher': false
   '@scarf/scarf': false
   '@swc/core': false

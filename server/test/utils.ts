@@ -1,5 +1,4 @@
 /* eslint-disable unicorn/no-this-outside-of-class */
-import { DatabaseConnectionParams, createPostgres } from '@immich/sql-tools';
 import { CallHandler, ExecutionContext, Provider } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { transformException } from '@nestjs/platform-express/multer/multer/multer.utils';
@@ -10,6 +9,7 @@ import multer, { memoryStorage } from 'multer';
 import { ClsService } from 'nestjs-cls';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { Duplex, Readable, Writable } from 'node:stream';
 import { PNG } from 'pngjs';
 import { Mock, Mocked, assert, vitest } from 'vitest';
@@ -79,6 +79,7 @@ import { DB } from 'src/schema/index.js';
 import { AuthService } from 'src/services/auth.service.js';
 import { BaseService } from 'src/services/base.service.js';
 import { getKyselyConfig } from 'src/utils/database.js';
+import { bootstrapSqliteSchema } from 'src/utils/sqlite-database.js';
 import { ClusterGroupFactory } from 'test/factories/cluster-group.factory.js';
 import { IAccessRepositoryMock, newAccessRepositoryMock } from 'test/repositories/access.repository.mock.js';
 import { newAssetRepositoryMock } from 'test/repositories/asset.repository.mock.js';
@@ -314,9 +315,6 @@ export const getMocks = () => {
   const databaseMock = automock(DatabaseRepository, { args: [, loggerMock], strict: false });
 
   databaseMock.withLock.mockImplementation((_type, fn) => fn());
-  databaseMock.getPostgresVersion = vitest.fn().mockResolvedValue('14.10 (Debian 14.10-1.pgdg120+1)');
-  databaseMock.getPostgresVersionRange = vitest.fn().mockReturnValue('>=14.0.0');
-  databaseMock.createExtension = vitest.fn().mockResolvedValue(void 0);
   databaseMock.vacuum.mockResolvedValue(void 0);
 
   const mocks: ServiceMocks = {
@@ -483,20 +481,12 @@ function* newPngFactory() {
 
 const pngFactory = newPngFactory();
 
-const templateName = 'mich';
-
-const withDatabase = (url: string, name: string) => url.replace(`/${templateName}`, () => `/${name}`);
-
 export const getKyselyDB = async (suffix?: string): Promise<Kysely<DB>> => {
-  const testUrl = process.env.IMMICH_TEST_POSTGRES_URL!;
-  const connection = { connectionType: 'url', url: withDatabase(testUrl, 'postgres') } as DatabaseConnectionParams;
-  const sql = createPostgres({ maxConnections: 1, connection });
-
-  const randomSuffix = Math.random().toString(36).slice(2, 7);
-  const dbName = `immich_${suffix ?? randomSuffix}`;
-  await sql.unsafe(`CREATE DATABASE ${dbName} WITH TEMPLATE ${templateName} OWNER postgres;`);
-
-  return new Kysely<DB>(getKyselyConfig({ connectionType: 'url', url: withDatabase(testUrl, dbName) }));
+  const suffixId = suffix ?? Math.random().toString(36).slice(2, 7);
+  const filename = `${tmpdir()}/immich_test_${suffixId}_${process.pid}_${Date.now()}.db`;
+  const db = new Kysely<DB>(getKyselyConfig({ connectionType: 'sqlite', filename }));
+  await bootstrapSqliteSchema(db);
+  return db;
 };
 
 export const newRandomImage = () => {

@@ -588,6 +588,9 @@ export class AuthService extends BaseService {
       };
     }
 
+    this.logger.warn(
+      `Session token rejected: no session/user match for token hash ${hashed.toString('hex').slice(0, 12)}…`,
+    );
     throw new UnauthorizedException('Invalid user token');
   }
 

@@ -13,6 +13,7 @@ import { SystemMetadataRepository } from 'src/repositories/system-metadata.repos
 import { DB } from 'src/schema/index.js';
 import { GeodataPlacesTable } from 'src/schema/tables/geodata-places.table.js';
 import { NaturalEarthCountriesTable } from 'src/schema/tables/natural-earth-countries.table.js';
+import { unaccentFold } from 'src/utils/sqlite-database.js';
 
 export interface MapMarkerSearchOptions {
   isArchived?: boolean;
@@ -32,7 +33,7 @@ export interface ReverseGeocodeResult {
   city: string | null;
 }
 
-interface MapDB extends DB {
+export interface MapDB extends DB {
   geodata_places_tmp: GeodataPlacesTable;
   naturalearth_countries_tmp: NaturalEarthCountriesTable;
 }
@@ -41,6 +42,19 @@ interface CountryNames {
   byAlpha2: Map<string, string>;
   byAlpha3: Map<string, string>;
 }
+
+// Ray-casting point-in-polygon (x=longitude, y=latitude); replaces PG polygon `@>`
+const pointInPolygon = (x: number, y: number, ring: [number, number][]): boolean => {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i] as [number, number];
+    const [xj, yj] = ring[j] as [number, number];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+};
 
 @Injectable()
 export class MapRepository {
@@ -63,6 +77,7 @@ export class MapRepository {
     // TODO move to service init
     const geocodingMetadata = await this.metadataRepository.get(SystemMetadataKey.ReverseGeocodingState);
     if (geocodingMetadata?.lastUpdate === geodataDate) {
+      await this.ensurePlacesTrgmIndex();
       return;
     }
 
@@ -156,17 +171,21 @@ export class MapRepository {
 
     const countryNames = await this.loadCountryNames();
 
+    // FORK (SQLite): earthdistance/GiST do not exist here. Bounding-box prefilter
+    // (served by idx_geodata_places_latlon) + haversine scalar reproduces earth_box +
+    // earth_distance semantics at this radius; 25 km keeps the box small.
+    const dLat = reverseGeocodeMaxDistance / 111_320;
+    const dLon = reverseGeocodeMaxDistance / (111_320 * Math.max(Math.cos((point.latitude * Math.PI) / 180), 0.01));
+
     const response = await this.db
       .selectFrom('geodata_places')
       .selectAll()
       .where(
-        sql`earth_box(ll_to_earth_public(${point.latitude}, ${point.longitude}), ${reverseGeocodeMaxDistance})`,
-        '@>',
-        sql`ll_to_earth_public(latitude, longitude)`,
+        sql<SqlBool>`(latitude between ${point.latitude - dLat} and ${point.latitude + dLat}) and
+             (longitude between ${point.longitude - dLon} and ${point.longitude + dLon}) and
+             geo_distance_m(${point.latitude}, ${point.longitude}, latitude, longitude) <= ${reverseGeocodeMaxDistance}`,
       )
-      .orderBy(
-        sql`(earth_distance(ll_to_earth_public(${point.latitude}, ${point.longitude}), ll_to_earth_public(latitude, longitude)))`,
-      )
+      .orderBy(sql`geo_distance_m(${point.latitude}, ${point.longitude}, latitude, longitude)`)
       .limit(1)
       .executeTakeFirst();
 
@@ -184,14 +203,10 @@ export class MapRepository {
       `Empty response from database for city reverse geocoding lat: ${point.latitude}, lon: ${point.longitude}. Likely cause: no nearby large populated place (500+ within ${reverseGeocodeMaxDistance / 1000}km). Falling back to country boundaries.`,
     );
 
-    const ne_response = await this.db
-      .selectFrom('naturalearth_countries')
-      .selectAll()
-      .where('coordinates', '@>', sql<string>`point(${point.longitude}, ${point.latitude})`)
-      .limit(1)
-      .executeTakeFirst();
+    const polygons = await this.loadCountryPolygons();
+    const hit = polygons.find((p) => pointInPolygon(point.longitude, point.latitude, p.ring));
 
-    if (!ne_response) {
+    if (!hit) {
       this.logger.log(
         `Empty response from database for natural earth country reverse geocoding lat: ${point.latitude}, lon: ${point.longitude}`,
       );
@@ -199,14 +214,38 @@ export class MapRepository {
       return { country: null, state: null, city: null };
     }
 
-    this.logger.verboseFn(() => `Raw: ${JSON.stringify(ne_response, ['id', 'admin', 'admin_a3', 'type'], 2)}`);
-
-    const { admin_a3 } = ne_response;
+    const { admin_a3 } = hit;
     const country = countryNames.byAlpha3.get(admin_a3) ?? null;
     const state = null;
     const city = null;
 
     return { country, state, city };
+  }
+
+  private countryPolygons?: Promise<{ admin_a3: string; ring: [number, number][] }[]>;
+
+  private loadCountryPolygons() {
+    this.countryPolygons ??= this.readCountryPolygons().catch((error) => {
+      this.countryPolygons = undefined;
+      throw error;
+    });
+    return this.countryPolygons;
+  }
+
+  private async readCountryPolygons() {
+    const rows = await this.db.selectFrom('naturalearth_countries').select(['admin_a3', 'coordinates']).execute();
+    const out: { admin_a3: string; ring: [number, number][] }[] = [];
+    for (const row of rows) {
+      const ring: [number, number][] = Array.from(
+        row.coordinates.matchAll(/\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)/g),
+        (m) => [Number(m[1]), Number(m[2])],
+      );
+      if (ring.length > 2) {
+        out.push({ admin_a3: row.admin_a3, ring });
+      }
+    }
+    this.logger.log(`Loaded ${out.length} country polygons for reverse-geocode fallback`);
+    return out;
   }
 
   // init() skips the geodata import when it is up to date, so load the names on demand
@@ -280,17 +319,9 @@ export class MapRepository {
       }
     }
 
-    await this.db.transaction().execute(async (manager) => {
-      await sql`CREATE TABLE naturalearth_countries_tmp
-                (
-                  LIKE naturalearth_countries INCLUDING ALL EXCLUDING INDEXES
-                )`.execute(manager);
-      await manager.schema.dropTable('naturalearth_countries').execute();
-      await manager.schema.alterTable('naturalearth_countries_tmp').renameTo('naturalearth_countries').execute();
-    });
-
+    // FORK (SQLite): table + PK already exist from the boot schema; truncate + refill.
+    await this.db.deleteFrom('naturalearth_countries').execute();
     await this.db.insertInto('naturalearth_countries').values(entities).execute();
-    await sql`ALTER TABLE naturalearth_countries ADD PRIMARY KEY (id) WITH (FILLFACTOR = 100)`.execute(this.db);
   }
 
   private async importGeodata() {
@@ -300,23 +331,34 @@ export class MapRepository {
       this.loadAdmin(resourcePaths.geodata.admin2),
     ]);
 
-    await this.db.schema.dropTable('geodata_places_tmp').ifExists().execute();
-    await this.db.transaction().execute(async (manager) => {
-      await sql`CREATE TABLE geodata_places_tmp
-                (
-                  LIKE geodata_places INCLUDING ALL EXCLUDING INDEXES
-                )`.execute(manager);
-      await manager.schema.dropTable('geodata_places').execute();
-      await manager.schema.alterTable('geodata_places_tmp').renameTo('geodata_places').execute();
-    });
-    await this.db.schema
-      .createIndex('IDX_geodata_gist_earthcoord')
-      .on('geodata_places')
-      .using('gist')
-      .expression(sql`ll_to_earth_public(latitude, longitude)`)
-      .execute();
+    // FORK (SQLite): table + PK ship in the boot schema; truncate + refill.
+    await this.db.deleteFrom('geodata_places').execute();
     await this.loadCities500(admin1, admin2);
     await this.createGeodataIndices();
+    await this.buildPlacesTrgmIndex();
+  }
+
+  // FORK (SQLite): volumes created before the trigram index existed (or where the
+  // snapshot marker matches and the import is a no-op) must still get a usable
+  // prefilter: build whenever geodata rows exist but the index is empty.
+  private async ensurePlacesTrgmIndex() {
+    const { count: places } = await this.db
+      .selectFrom('geodata_places')
+      .select((eb) => eb.fn.countAll().as('count'))
+      .executeTakeFirstOrThrow();
+    if (Number(places) === 0) {
+      return;
+    }
+    await sql`create virtual table if not exists geodata_places_trgm using fts5(txt, tokenize='trigram')`.execute(
+      this.db,
+    );
+    const row = await this.db
+      .selectFrom(sql`geodata_places_trgm`.as('t'))
+      .select(sql`count(*)`.as('c'))
+      .executeTakeFirstOrThrow();
+    if (Number(row.c) === 0) {
+      await this.buildPlacesTrgmIndex();
+    }
   }
 
   private async loadCities500(admin1Map: Map<string, string>, admin2Map: Map<string, string>) {
@@ -355,29 +397,34 @@ export class MapRepository {
         admin2Name: admin2Map.get(`${lineSplit[8]}.${lineSplit[10]}.${lineSplit[11]}`) ?? null,
       };
       bufferGeodata.push(geoData);
-      // eslint-disable-next-line unicorn/prefer-continue
-      if (bufferGeodata.length >= 5000) {
-        const curLength = bufferGeodata.length;
-        futures.push(
-          this.db
-            .insertInto('geodata_places')
-            .values(bufferGeodata)
-            .execute()
-
-            .then(() => {
-              count += curLength;
-              if (count % 10_000 === 0) {
-                this.logger.log(`${count} geodata records imported`);
-              }
-            }),
-        );
-        bufferGeodata = [];
-        // leave spare connection for other queries
-        if (futures.length >= 9) {
-          await Promise.all(futures);
-          futures = [];
-        }
+      // SQLite binds are capped at 32766 parameters per statement; this row shape has
+      // 11 columns, so 2000 rows per insert (22k binds) is the safe fork batch size.
+      if (bufferGeodata.length < 2000) {
+        continue;
       }
+
+      const curLength = bufferGeodata.length;
+      futures.push(
+        this.db
+          .insertInto('geodata_places')
+          .values(bufferGeodata)
+          .execute()
+
+          .then(() => {
+            count += curLength;
+            if (count % 10_000 === 0) {
+              this.logger.log(`${count} geodata records imported`);
+            }
+          }),
+      );
+      bufferGeodata = [];
+      // leave spare connection for other queries
+      if (!(futures.length >= 9)) {
+        continue;
+      }
+
+      await Promise.all(futures);
+      futures = [];
     }
 
     if (bufferGeodata.length > 0) {
@@ -415,28 +462,59 @@ export class MapRepository {
   }
 
   private createGeodataIndices() {
-    return Promise.all([
-      sql`ALTER TABLE geodata_places ADD PRIMARY KEY (id) WITH (FILLFACTOR = 100)`.execute(this.db),
-      this.db.schema
-        .createIndex(`idx_geodata_places_alternate_names`)
-        .on('geodata_places')
-        .using('gin (f_unaccent("alternateNames") gin_trgm_ops)')
-        .execute(),
-      this.db.schema
-        .createIndex(`idx_geodata_places_name`)
-        .on('geodata_places')
-        .using('gin (f_unaccent(name) gin_trgm_ops)')
-        .execute(),
-      this.db.schema
-        .createIndex(`idx_geodata_places_admin1_name`)
-        .on('geodata_places')
-        .using('gin (f_unaccent("admin1Name") gin_trgm_ops)')
-        .execute(),
-      this.db.schema
-        .createIndex(`idx_geodata_places_admin2_name`)
-        .on('geodata_places')
-        .using('gin (f_unaccent("admin2Name") gin_trgm_ops)')
-        .execute(),
-    ]);
+    // FORK (SQLite): PK ships in the boot schema. The PG GiST earth-coordinate index
+    // and gin_trgm expression indexes have no SQLite equivalent; the lat/lon composite
+    // serves the bbox prefilter, and pg_trgm comparisons run in JS scalars instead.
+    return this.db.schema
+      .createIndex('idx_geodata_places_latlon')
+      .ifNotExists()
+      .on('geodata_places')
+      .columns(['latitude', 'longitude'])
+      .execute();
+  }
+
+  // FORK (SQLite): Postgres accelerates pg_trgm place search with a GIN expression
+  // index; SQLite has no GIN. An FTS5 table with the built-in trigram tokenizer over
+  // accent-folded searchable text serves as the prefilter for the word-similarity
+  // gate in searchPlaces. Superset-safe: any word_similarity >= 0.6 match shares a
+  // contiguous run of >= 3 trigrams with some needle word — i.e. a shared >= 3-char
+  // substring — which the trigram tokenizer indexes. Needles with any word < 3 chars
+  // skip the prefilter (see SearchRepository.placesTrgmPrefilter).
+  private async buildPlacesTrgmIndex() {
+    const t0 = Date.now();
+    await sql`create virtual table if not exists geodata_places_trgm using fts5(txt, tokenize='trigram')`.execute(
+      this.db,
+    );
+    await sql`delete from geodata_places_trgm`.execute(this.db);
+
+    let lastId = -1;
+    let count = 0;
+    while (true) {
+      const rows = await this.db
+        .selectFrom('geodata_places')
+        .select(['id', 'name', 'admin1Name', 'admin2Name', 'alternateNames'])
+        .where('id', '>', lastId)
+        .orderBy('id', 'asc')
+        .limit(5000)
+        .execute();
+      if (rows.length === 0) {
+        break;
+      }
+      lastId = rows.at(-1)!.id;
+      await sql`insert into geodata_places_trgm(rowid, txt) values ${sql.join(
+        rows.map(
+          (row) =>
+            sql`(
+            ${row.id},
+            ${unaccentFold([row.name, row.admin1Name ?? '', row.admin2Name ?? '', row.alternateNames ?? ''].join(' '))}
+          )`,
+        ),
+        sql`, `,
+      )}`.execute(this.db);
+      count += rows.length;
+    }
+    this.logger.log(
+      `Built geodata_places_trgm index for ${count} records in ${((Date.now() - t0) / 1000).toFixed(2)}s`,
+    );
   }
 }

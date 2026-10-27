@@ -56,22 +56,22 @@ export class OcrRepository {
       DummyValue.STRING,
     ],
   })
-  upsert(assetId: string, ocrDataList: Insertable<AssetOcrTable>[], searchText: string) {
-    let query = this.db.with('deleted_ocr', (db) => db.deleteFrom('asset_ocr').where('assetId', '=', assetId));
-    if (ocrDataList.length > 0) {
-      (query as any) = query
-        .with('inserted_ocr', (db) => db.insertInto('asset_ocr').values(ocrDataList))
-        .with('inserted_search', (db) =>
-          db
-            .insertInto('ocr_search')
-            .values({ assetId, text: searchText })
-            .onConflict((oc) => oc.column('assetId').doUpdateSet((eb) => ({ text: eb.ref('excluded.text') }))),
-        );
-    } else {
-      (query as any) = query.with('deleted_search', (db) => db.deleteFrom('ocr_search').where('assetId', '=', assetId));
-    }
-
-    return query.selectNoFrom(sql`1`.as('dummy')).execute();
+  async upsert(assetId: string, ocrDataList: Insertable<AssetOcrTable>[], searchText: string) {
+    // SQLite has no data-modifying CTEs; run the same steps sequentially.
+    await this.db.transaction().execute(async (trx) => {
+      await trx.deleteFrom('asset_ocr').where('assetId', '=', assetId).execute();
+      if (ocrDataList.length > 0) {
+        await trx.insertInto('asset_ocr').values(ocrDataList).execute();
+        await trx
+          .insertInto('ocr_search')
+          .values({ assetId, text: searchText })
+          .onConflict((oc) => oc.column('assetId').doUpdateSet((eb) => ({ text: eb.ref('excluded.text') })))
+          .execute();
+      } else {
+        await trx.deleteFrom('ocr_search').where('assetId', '=', assetId).execute();
+      }
+    });
+    return;
   }
 
   @GenerateSql({ params: [DummyValue.UUID, [], []] })

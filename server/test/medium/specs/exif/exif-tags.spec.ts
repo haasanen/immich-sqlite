@@ -26,9 +26,13 @@ describe('exif tags', () => {
 
     await sut.handleMetadataExtraction({ id: asset.id });
 
-    await expect(ctx.getTags(asset.id)).resolves.toEqual([
-      expect.objectContaining({ assetId: asset.id, value: 'Frost', parentId: null }),
-      expect.objectContaining({ assetId: asset.id, value: 'Yard', parentId: null }),
-    ]);
+    // set semantics: engine scan order is plan-dependent (flake on PG CI)
+    await expect(ctx.getTags(asset.id)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ assetId: asset.id, value: 'Frost', parentId: null }),
+        expect.objectContaining({ assetId: asset.id, value: 'Yard', parentId: null }),
+      ]),
+    );
+    await expect(ctx.getTags(asset.id)).resolves.toHaveLength(2);
   });
 });
