@@ -297,6 +297,30 @@ describe(AssetMediaService.name, () => {
   });
 
   describe('uploadAsset', () => {
+    it('should reject all upload surfaces in browse-only mode', async () => {
+      const savedNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production'; // product build: gate is unconditional
+      try {
+        const file = {
+          uuid: 'random-uuid',
+          originalPath: 'fake_path/asset_1.jpeg',
+          mimeType: 'image/jpeg',
+          checksum: Buffer.from('file hash', 'utf8'),
+          originalName: 'asset_1.jpeg',
+          size: 42,
+        };
+        await expect(sut.uploadAsset(authStub.user1, createDto, file)).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+          sut.bulkUploadCheck(authStub.user1, {
+            assets: [{ id: 'asset-id', checksum: Buffer.from('file hash', 'utf8').toString('hex') }],
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(mocks.asset.create).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = savedNodeEnv;
+      }
+    });
+
     it('should throw an error if the quota is exceeded', async () => {
       const file = {
         uuid: 'random-uuid',

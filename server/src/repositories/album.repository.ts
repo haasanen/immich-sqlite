@@ -9,7 +9,6 @@ import {
   type Updateable,
   sql,
 } from 'kysely';
-import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { Chunked, ChunkedArray, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
@@ -19,6 +18,8 @@ import { DB } from 'src/schema/index.js';
 import { AlbumTable } from 'src/schema/tables/album.table.js';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table.js';
 import { asUuid, dummy, withDefaultVisibility } from 'src/utils/database.js';
+import { jsonArrayFrom } from 'src/utils/sql-json.js';
+import { sqliteJsonObjectFromAlias, sqliteRowObject } from 'src/utils/sqlite-json-helpers.js';
 
 export interface AlbumAssetCount {
   albumId: string;
@@ -39,7 +40,14 @@ const withAlbumUsers = (authUserId?: string) => (eb: ExpressionBuilder<DB, 'albu
       .innerJoin('user', 'user.id', 'album_user.userId')
       .whereRef('album_user.albumId', '=', 'album.id')
       .select('album_user.role')
-      .select((eb) => jsonObjectFrom(eb.selectFrom(dummy).select(columns.user)).$notNull().as('user'))
+      .select(
+        sql`json_object(${sql.join(
+          columns.user.map((c: string) => sql.raw(`'${c}', "user"."${c}"`)),
+          sql`, `,
+        )})`
+          .$castTo<any>()
+          .as('user'),
+      )
       .orderBy('album_user.role')
       .$if(!!authUserId, (qb) => qb.orderBy((eb) => eb('album_user.userId', '=', authUserId!), 'desc'))
       .orderBy('user.name', 'asc'),
@@ -53,6 +61,24 @@ const withSharedLink = (eb: ExpressionBuilder<DB, 'album'>) =>
   ).as('sharedLinks');
 
 const withAssets = (eb: ExpressionBuilder<DB, 'album'>) => {
+  // SQLite: aggregate explicit row objects; no composite row values.
+  const element = sqliteJsonObjectFromAlias('asset', 'asset', { exifInfo: sql`"asset"."exifInfo"` });
+  const inner: any = eb
+    .selectFrom('asset')
+    .selectAll('asset')
+    .leftJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
+    .select(sqliteRowObject('asset_exif', 'assetId').as('exifInfo'))
+    .innerJoin('album_asset', 'album_asset.assetId', 'asset.id')
+    .whereRef('album_asset.albumId', '=', 'album.id')
+    .where('asset.deletedAt', 'is', null)
+    .$call(withDefaultVisibility)
+    .orderBy('asset.fileCreatedAt', 'desc');
+  return sql`(
+    select case when count(*) = 0 then null else json_group_array(${element}) end
+    from (${inner}) as "asset"
+  )`
+    .$castTo<any>()
+    .as('assets');
   return eb
     .selectFrom((eb) =>
       eb
@@ -88,8 +114,8 @@ export class AlbumRepository {
 
   @GenerateSql({ params: [DummyValue.UUID, { withAssets: true }, DummyValue.UUID] })
   getById(id: string, options: AlbumInfoOptions, authUserId?: string) {
-    return this.db
-      .with('album_user', (qb) => qb.selectFrom('album_user').selectAll().where('album_user.albumId', '=', id))
+    const qb = this.db;
+    return qb
       .selectFrom('album')
       .selectAll('album')
       .where('album.id', '=', id)
@@ -321,40 +347,40 @@ export class AlbumRepository {
     const userIds = albumUsers.map((u) => u.userId);
     const roles = albumUsers.map((u) => u.role);
 
-    const result = await this.db
-      .with('album', (db) => db.insertInto('album').values(album).returningAll())
-      .with('album_user', (db) =>
-        db
+    // SQLite has no data-modifying CTEs; run the same inserts sequentially
+    // inside one transaction, then re-run the shaped select.
+    let albumId: string = album.id as string;
+    const created = await this.db.transaction().execute(async (trx) => {
+      const inserted = await trx.insertInto('album').values(album).returning('id').executeTakeFirstOrThrow();
+      albumId = inserted.id;
+      if (userIds.length > 0) {
+        await trx
           .insertInto('album_user')
-          .expression((eb) =>
-            eb
-              .selectFrom('album')
-              .select(({ ref }) => [
-                ref('album.id').as('albumId'),
-                sql`unnest(${userIds}::uuid[])`.as('userId'),
-                sql`unnest(${roles}::album_user_role_enum[])`.as('role'),
-              ]),
+          .columns(['albumId', 'userId', 'role'])
+          .expression(
+            sql`select ${albumId}, j1.value, j2.value
+                from json_each(pg_array_json(${JSON.stringify(userIds)})) as j1
+                join json_each(pg_array_json(${JSON.stringify(roles)})) as j2 on j1.key = j2.key`,
           )
-          .returning(['album_user.albumId', 'album_user.userId', 'album_user.role']),
-      )
-      .with('album_asset', (db) =>
-        db
+          .execute();
+      }
+      if (assetIds.length > 0) {
+        await trx
           .insertInto('album_asset')
-          .expression((eb) =>
-            eb
-              .selectFrom('album')
-              .select(({ ref }) => [ref('album.id').as('albumId'), sql`unnest(${assetIds}::uuid[])`.as('assetId')]),
-          )
-          .onConflict((oc) => oc.doNothing())
-          .returning(['album_asset.albumId', 'album_asset.assetId']),
-      )
+          .columns(['albumId', 'assetId'])
+          .expression(sql`select ${albumId}, j.value from json_each(pg_array_json(${JSON.stringify(assetIds)})) as j`)
+          .execute();
+      }
+      return albumId;
+    });
+    const result = await this.db
       .selectFrom('album')
       .selectAll('album')
       .select(withAlbumUsers(authUserId))
       .select(withAssets)
       .$narrowType<{ assets: NotNull }>()
+      .where('album.id', '=', created!)
       .executeTakeFirstOrThrow();
-
     return result;
   }
 

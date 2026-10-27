@@ -1,8 +1,8 @@
 import { Body, Container, Font, Head, Hr, Html, Img, Preview, Section, Tailwind, Text } from '@react-email/components';
 import * as React from 'react';
-import { ImmichFooter } from 'src/emails/components/footer.template.js';
-// @ts-expect-error
+// @ts-expect-error tailwindcss-preset-email ships no type declarations
 import tailwindPresetEmail from 'tailwindcss-preset-email';
+import { ImmichFooter } from 'src/emails/components/footer.template.js';
 
 interface ImmichLayoutProps {
   children: React.ReactNode;

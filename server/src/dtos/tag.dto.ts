@@ -11,7 +11,7 @@ const TagCreateSchema = z
       .string()
       .regex(/^[^/]*$/, `Tag name cannot contain slash characters ("/")`)
       .describe('Tag name'),
-    parentId: z.uuidv4().nullish().describe('Parent tag ID'),
+    parentId: z.uuid().nullish().describe('Parent tag ID'),
     color: hexColor.nullable().optional().describe('Tag color (hex)'),
   })
   .meta({ id: 'TagCreateDto' });
@@ -35,8 +35,8 @@ const TagUpsertSchema = z
 
 const TagBulkAssetsSchema = z
   .object({
-    tagIds: z.array(z.uuidv4()).describe('Tag IDs'),
-    assetIds: z.array(z.uuidv4()).describe('Asset IDs'),
+    tagIds: z.array(z.uuid()).describe('Tag IDs'),
+    assetIds: z.array(z.uuid()).describe('Asset IDs'),
   })
   .meta({ id: 'TagBulkAssetsDto' });
 
@@ -48,7 +48,7 @@ const TagBulkAssetsResponseSchema = z
 
 export const TagResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Tag ID'),
+    id: z.uuid().describe('Tag ID'),
     parentId: z.string().optional().describe('Parent tag ID'),
     name: z.string().describe('Tag name'),
     value: z.string().describe('Tag value (full path)'),

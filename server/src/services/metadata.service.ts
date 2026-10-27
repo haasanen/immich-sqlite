@@ -16,7 +16,6 @@ import {
   AssetType,
   AssetVisibility,
   ChecksumAlgorithm,
-  DatabaseLock,
   ExifOrientation,
   ImmichWorker,
   JobName,
@@ -34,6 +33,7 @@ import { isAssetChecksumConstraint } from 'src/utils/database.js';
 import { mergeTimeZone } from 'src/utils/date.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
 import { batched, isFaceImportEnabled } from 'src/utils/misc.js';
+
 import { upsertTags } from 'src/utils/tag.js';
 import { Tasks } from 'src/utils/tasks.js';
 
@@ -162,7 +162,10 @@ export class MetadataService extends BaseService {
 
     try {
       await this.jobRepository.pause(QueueName.MetadataExtraction);
-      await this.databaseRepository.withLock(DatabaseLock.GeodataImport, () => this.mapRepository.init());
+      // Reverse geocoding's geodata importer runs Postgres-only DDL (GiST
+      // earth-coord indexes, earthbox queries). This single-engine fork ships
+      // without reverse geocoding; map search remains, place lookup by name works.
+      this.logger.log('Reverse geocoding import skipped: not supported on this engine');
       await this.jobRepository.resume(QueueName.MetadataExtraction);
 
       this.logger.log(`Initialized local reverse geocoder`);

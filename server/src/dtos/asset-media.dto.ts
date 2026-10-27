@@ -54,7 +54,7 @@ const AssetMediaBaseSchema = z.object({
 const AssetMediaCreateSchema = AssetMediaBaseSchema.extend({
   isFavorite: stringToBool.optional().describe('Mark as favorite'),
   visibility: AssetVisibilitySchema.optional(),
-  livePhotoVideoId: z.uuidv4().optional().describe('Live photo video ID'),
+  livePhotoVideoId: z.uuid().optional().describe('Live photo video ID'),
   metadata: JsonParsed.pipe(z.array(AssetMetadataUpsertItemSchema)).optional().describe('Asset metadata items'),
   [UploadFieldName.SIDECAR_DATA]: z
     .any()
