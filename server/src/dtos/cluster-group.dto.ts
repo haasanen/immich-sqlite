@@ -6,15 +6,15 @@ import { isoDatetimeToDate } from 'src/validation.js';
 
 const ClusterGroupRequestCreateSchema = z
   .object({
-    userId: z.uuidv4().describe('User to invite into the cluster group'),
+    userId: z.uuid().describe('User to invite into the cluster group'),
   })
   .meta({ id: 'ClusterGroupRequestCreateDto' });
 
 const ClusterGroupRequestResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Request ID'),
-    clusterGroupId: z.uuidv4().describe('Cluster group the user is invited to join'),
-    userId: z.uuidv4().describe('User the request was created for'),
+    id: z.uuid().describe('Request ID'),
+    clusterGroupId: z.uuid().describe('Cluster group the user is invited to join'),
+    userId: z.uuid().describe('User the request was created for'),
     createdAt: isoDatetimeToDate.describe('Creation date'),
   })
   .meta({ id: 'ClusterGroupRequestResponseDto' });

@@ -21,7 +21,7 @@ const IntegrityGetReportSchema = z
 const IntegrityDeleteReportSchema = z.object({ type: IntegrityReport }).meta({ id: 'IntegrityDeleteReportDto' });
 
 const IntegrityReportResponseItemSchema = z.object({
-  id: z.uuidv4().describe('Integrity report item id'),
+  id: z.uuid().describe('Integrity report item id'),
   type: IntegrityReportSchema,
   path: z.string().describe('Integrity report item path'),
 });

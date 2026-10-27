@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { BROWSE_ONLY } from '$lib/fork';
   import UploadCover from './DragAndDropUploadOverlay.svelte';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import type { Snippet } from 'svelte';
@@ -25,7 +26,7 @@
 <div class:display-none={assetViewerManager.isViewing}>
   {@render children?.()}
 </div>
-<UploadCover />
+{#if !BROWSE_ONLY}<UploadCover />{/if}
 
 <style>
   :root {
