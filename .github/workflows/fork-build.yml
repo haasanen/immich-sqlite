@@ -1,0 +1,166 @@
+name: fork-build
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release: upstream tag + fork counter, e.g. v3.3.5-h1 (tree = main)'
+        required: true
+        type: string
+  push:
+    branches: [main]
+    tags: ['v*']
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  REGISTRY: ghcr.io
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: jdx/mise-action@v3
+      - name: Unit tests (install + format + lint + typecheck + unit, chained by mise)
+        run: mise run ci-unit
+        working-directory: server
+      - name: Medium tests (SQLite — the only engine; blocking gate)
+        run: mise run ci-medium
+        working-directory: server
+  build-push:
+    needs: test
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fork rule: our build is ALWAYS main's tree (the upstream port);
+          # the version tag is upstream's own number. Never build the tag commit.
+          ref: main
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/immich-sqlite
+          tags: |
+            type=raw,value={{tag}},enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_ID=${{ github.run_id }}
+            BUILD_IMAGE=ghcr.io/${{ github.repository_owner }}/immich-sqlite
+            BUILD_SOURCE_REF=${{ github.ref_name }}
+            BUILD_SOURCE_COMMIT=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+      - name: Smoke test image
+        run: |
+          docker pull ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }}
+          docker run --rm --entrypoint "" ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }} \
+            node -e 'const p=require("/usr/src/app/server/package.json"); if(!p.version) process.exit(1); console.log("server pkg version:", p.version)'
+          docker run --rm --entrypoint "" ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }} \
+            test -f /build/www/index.html && echo "web bundle present"
+          # real boot smoke: server must serve HTTP with zero product config,
+          # and the SQLite library DB + embedded queue DB must land on /data
+          docker volume create smoke-data
+          docker run -d --name immich-smoke -p 2283:2283 -v smoke-data:/data \
+            ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }}
+          ok=""
+          for i in $(seq 1 36); do
+            if curl -fsS http://localhost:2283/api/server/version; then ok=1; break; fi
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { docker logs immich-smoke; exit 1; }
+          # the in-image version MUST equal the release version (no deviation from upstream)
+          REL="${{ steps.meta.outputs.version }}"; REL="${REL#v}"; REL="${REL%%-h*}"
+          curl -fsS http://localhost:2283/api/server/version | python3 -c "import json,sys; d=json.load(sys.stdin); v='{}.{}.{}'.format(d['major'],d['minor'],d['patch']); assert v=='$REL', 'image version '+v+' != release $REL'; print('version match:', v)"
+          docker exec immich-smoke test -f /data/immich.db && echo "library DB on /data volume: OK"
+          docker exec immich-smoke test -f /data/immich-queue.db && echo "queue DB on /data volume: OK"
+          docker rm -f immich-smoke
+          docker volume rm smoke-data
+      - name: External library ingestion smoke
+        run: |
+          # the product's core loop as a CI gate: files enter ONLY via a read-only
+          # external mount; scan detects them; derivatives are generated and served.
+          set -euo pipefail
+          docker volume create smoke-data
+          mkdir -p smoke-ext
+          printf '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==' | base64 -d > smoke-ext/photo.jpg
+          docker run -d --name immich-smoke -p 2283:2283 -v smoke-data:/data -v "$PWD/smoke-ext:/pictures:ro" \
+            ghcr.io/${{ github.repository_owner }}/immich-sqlite:${{ steps.meta.outputs.version }}
+          ok=""
+          for i in $(seq 1 36); do
+            if curl -fsS http://localhost:2283/api/server/version >/dev/null; then ok=1; break; fi
+            sleep 5
+          done
+          [ "$ok" = 1 ] || { docker logs immich-smoke; exit 1; }
+          curl -fsS -X POST http://localhost:2283/api/auth/admin-sign-up -H 'Content-Type: application/json' -d '{"email":"smoke@test.local","password":"SmokeTest123!","name":"smoke"}' >/dev/null
+          TOK=$(curl -fsS -X POST http://localhost:2283/api/auth/login -H 'Content-Type: application/json' -d '{"email":"smoke@test.local","password":"SmokeTest123!"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
+          OWNER=$(curl -fsS http://localhost:2283/api/users/me -H "Authorization: Bearer $TOK" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          LIB=$(curl -fsS -X POST http://localhost:2283/api/libraries -H 'Content-Type: application/json' -H "Authorization: Bearer $TOK" -d "{\"name\":\"smoke\",\"ownerId\":\"$OWNER\",\"importPaths\":[\"/pictures\"]}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          curl -fsS -X POST "http://localhost:2283/api/libraries/$LIB/scan" -H "Authorization: Bearer $TOK" >/dev/null
+          found=""
+          for i in $(seq 1 36); do
+            COUNT=$(curl -fsS -X POST http://localhost:2283/api/search/metadata -H 'Content-Type: application/json' -H "Authorization: Bearer $TOK" -d '{"size":10}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["assets"]["count"])')
+            if [ "$COUNT" -ge 1 ]; then found=1; break; fi
+            sleep 5
+          done
+          [ "$found" = 1 ] || { docker logs immich-smoke; echo "external scan did not import the mounted photo"; exit 1; }
+          echo "external library scan imported mounted file: OK"
+          ASSET=$(curl -fsS -X POST http://localhost:2283/api/search/metadata -H 'Content-Type: application/json' -H "Authorization: Bearer $TOK" -d '{"size":10}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["assets"]["items"][0]["id"])')
+          # browse-only invariant with a VALID token and a real multipart upload:
+          # only the product invariant can reject this (401/403 masking is impossible)
+          upcode=$(curl -s -o upresp.json -w '%{http_code}' -X POST http://localhost:2283/api/assets -H "Authorization: Bearer $TOK" -H 'x-immich-checksum: 0000000000000000000000000000000000000000000000000000000000000000' -F 'assetData=@smoke-ext/photo.jpg' -F 'filename=probe.jpg' -F 'fileCreatedAt=2026-01-01T00:00:00.000Z' -F 'fileModifiedAt=2026-01-01T00:00:00.000Z')
+          if [ "$upcode" = "400" ] && grep -q 'browse-only' upresp.json; then
+            echo "browse-only: real multipart upload rejected by invariant: OK"
+          else
+            echo "upload not blocked by browse-only invariant (code $upcode): $(head -c 200 upresp.json)"; exit 1
+          fi
+          thumb=""
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:2283/api/assets/$ASSET/thumbnail?size=thumbnail" -H "Authorization: Bearer $TOK")
+            if [ "$code" = "200" ]; then thumb=1; break; fi
+            sleep 5
+          done
+          [ "$thumb" = 1 ] || { docker logs immich-smoke; echo "thumbnail not generated for externally-imported asset"; exit 1; }
+          echo "thumbnail generated + served for external asset: OK"
+          # hard floor: the full snapshot must actually land in the DB (silent
+          # partial-import degradation is what this gate exists to catch)
+          CNT=$(docker exec immich-smoke node -e "const D=require('better-sqlite3');const db=new D('/data/immich.db',{readonly:true});console.log(db.prepare('select count(*) as c from geodata_places').get().c)")
+          if [ "$CNT" -lt 10000 ]; then echo "geodata_places imported only $CNT rows"; exit 1; fi
+          # location pipeline: geodata snapshot from the base image must import at boot
+          # and reverse-geocode via the SQLite port (bbox prefilter + haversine scalar).
+          # AUTHDIAG: users/me with the same token on each poll distinguishes a dead
+          # session (auth race) from an endpoint bug; docker logs on failure seals it.
+          LOC=''
+          for i in $(seq 1 60); do
+            ME=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:2283/api/users/me -H "Authorization: Bearer ***")
+            LOC=$(curl -s -H "Authorization: Bearer ***" "http://localhost:2283/api/map/reverse-geocode?lat=51.5085&lon=-0.1257" || true)
+            case "$LOC" in *'"city":"London"'*) break ;; esac
+            if [ $((i % 15)) -eq 1 ]; then echo "poll $i: users/me=$ME loc_len=${#LOC} cnt=$CNT"; fi
+            sleep 2
+          done
+          case "$LOC" in
+            *'"city":"London"'*) echo "reverse geocoding resolves city from imported geodata: OK" ;;
+            *) echo "reverse geocoding failed (body: ${LOC:0:200})"; docker logs --tail 250 immich-smoke; exit 1 ;;
+          esac
+          echo "geodata_places imported: $CNT rows: OK"
+          docker rm -f immich-smoke
+          docker volume rm smoke-data

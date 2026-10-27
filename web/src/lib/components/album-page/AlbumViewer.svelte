@@ -16,6 +16,7 @@
   import { SlideshowNavigation, SlideshowState, slideshowStore } from '$lib/stores/slideshow.store';
   import { handlePromiseError } from '$lib/utils';
   import { fileUploadHandler, openFileUploadDialog } from '$lib/utils/file-uploader';
+  import { BROWSE_ONLY } from '$lib/fork';
   import type { AlbumResponseDto, SharedLinkResponseDto } from '@immich/sdk';
   import { ActionButton, IconButton, Logo } from '@immich/ui';
   import { mdiDownload, mdiFileImagePlusOutline, mdiPresentationPlay } from '@mdi/js';
@@ -42,7 +43,9 @@
       return;
     }
 
-    handlePromiseError(fileUploadHandler({ files: value.files, albumId: album.id }));
+    if (!BROWSE_ONLY) {
+      handlePromiseError(fileUploadHandler({ files: value.files, albumId: album.id }));
+    }
     dragAndDropFilesStore.set({ isDragging: false, files: [] });
   });
 
@@ -115,7 +118,7 @@
       {#snippet trailing()}
         <ActionButton action={Cast} />
 
-        {#if sharedLink.allowUpload}
+        {#if !BROWSE_ONLY && sharedLink.allowUpload}
           <IconButton
             shape="round"
             color="secondary"

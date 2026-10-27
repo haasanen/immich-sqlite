@@ -14,7 +14,6 @@ export default defineConfig({
     root: serverRoot,
     globals: true,
     include: ['test/medium/**/*.spec.ts'],
-    globalSetup: ['test/medium/globalSetup.ts'],
   },
   plugins: [swc.vite()],
 });

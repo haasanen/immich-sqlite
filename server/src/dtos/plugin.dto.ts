@@ -7,7 +7,7 @@ import { asPluginKey } from 'src/utils/workflow.js';
 
 const PluginSearchSchema = z
   .object({
-    id: z.uuidv4().optional().describe('Plugin ID'),
+    id: z.uuid().optional().describe('Plugin ID'),
     enabled: z.boolean().optional().describe('Whether the plugin is enabled'),
     name: z.string().optional(),
     version: z.string().optional(),
@@ -32,7 +32,7 @@ const PluginMethodResponseSchema = z
 
 const PluginResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Plugin ID'),
+    id: z.uuid().describe('Plugin ID'),
     name: z.string().describe('Plugin name'),
     title: z.string().describe('Plugin title'),
     description: z.string().describe('Plugin description'),
@@ -65,7 +65,7 @@ const PluginTemplateResponseSchema = z
 
 const PluginMethodSearchSchema = z
   .object({
-    id: z.uuidv4().optional().describe('Plugin method ID'),
+    id: z.uuid().optional().describe('Plugin method ID'),
     enabled: z.boolean().optional().describe('Whether the plugin method is enabled'),
     name: z.string().optional(),
     title: z.string().optional(),

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { type Insertable, type Kysely, type NotNull, sql } from 'kysely';
-import { jsonObjectFrom } from 'kysely/helpers/postgres';
+import { type Insertable, type Kysely, type NotNull, type ShallowDehydrateObject, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
-import { columns } from 'src/database.js';
+import { type User, columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { AssetVisibility } from 'src/enum.js';
 import { DB } from 'src/schema/index.js';
 import { ActivityTable } from 'src/schema/tables/activity.table.js';
-import { asUuid, dummy } from 'src/utils/database.js';
+import { asUuid } from 'src/utils/database.js';
+import { jsonObjectFrom } from 'src/utils/sql-json.js';
 
 export interface ActivitySearch {
   albumId?: string;
@@ -30,11 +30,19 @@ export class ActivityRepository {
       .innerJoin('user as user2', (join) =>
         join.onRef('user2.id', '=', 'activity.userId').on('user2.deletedAt', 'is', null),
       )
-      .innerJoinLateral(
-        (eb) => eb.selectFrom(dummy).select(columns.user2).as('user'),
-        (join) => join.onTrue(),
+
+      .select((eb) =>
+        jsonObjectFrom(
+          eb
+            .selectFrom('user')
+            .whereRef('user.id', '=', 'activity.userId')
+            .where('user.deletedAt', 'is', null)
+            .select(columns.userPrefix),
+        )
+          .$castTo<NonNullable<ShallowDehydrateObject<User>>>()
+          .as('user'),
       )
-      .select((eb) => eb.fn.toJson('user').as('user'))
+
       .leftJoin('asset', 'asset.id', 'activity.assetId')
       .$if(!!userId, (qb) => qb.where('activity.userId', '=', userId!))
       .$if(assetId === null, (qb) => qb.where('assetId', 'is', null))

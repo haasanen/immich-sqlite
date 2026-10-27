@@ -24,7 +24,7 @@ const TemplateSchema = z
 
 const NotificationSchema = z
   .object({
-    id: z.uuidv4().describe('Notification ID'),
+    id: z.uuid().describe('Notification ID'),
     createdAt: isoDatetimeToDate.describe('Creation date'),
     level: NotificationLevelSchema,
     type: NotificationTypeSchema,
@@ -37,7 +37,7 @@ const NotificationSchema = z
 
 const NotificationSearchSchema = z
   .object({
-    id: z.uuidv4().optional().describe('Filter by notification ID'),
+    id: z.uuid().optional().describe('Filter by notification ID'),
     level: NotificationLevelSchema.optional(),
     type: NotificationTypeSchema.optional(),
     unread: stringToBool.optional().describe('Filter by unread status'),
@@ -52,7 +52,7 @@ const NotificationCreateSchema = z
     description: z.string().nullish().describe('Notification description'),
     data: z.record(z.string(), z.unknown()).optional().describe('Additional notification data'),
     readAt: isoDatetimeToDate.nullish().describe('Date when notification was read'),
-    userId: z.uuidv4().describe('User ID to send notification to'),
+    userId: z.uuid().describe('User ID to send notification to'),
   })
   .meta({ id: 'NotificationCreateDto' });
 
@@ -64,14 +64,14 @@ const NotificationUpdateSchema = z
 
 const NotificationUpdateAllSchema = z
   .object({
-    ids: z.array(z.uuidv4()).min(1).describe('Notification IDs to update'),
+    ids: z.array(z.uuid()).min(1).describe('Notification IDs to update'),
     readAt: isoDatetimeToDate.nullish().describe('Date when notifications were read'),
   })
   .meta({ id: 'NotificationUpdateAllDto' });
 
 const NotificationDeleteAllSchema = z
   .object({
-    ids: z.array(z.uuidv4()).min(1).describe('Notification IDs to delete'),
+    ids: z.array(z.uuid()).min(1).describe('Notification IDs to delete'),
   })
   .meta({ id: 'NotificationDeleteAllDto' });
 

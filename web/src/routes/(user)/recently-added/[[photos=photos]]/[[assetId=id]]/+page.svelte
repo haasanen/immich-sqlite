@@ -22,6 +22,7 @@
   import { getAssetBulkActions } from '$lib/services/asset.service';
   import { type OnLink, type OnUnlink } from '$lib/utils/actions';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
+  import { BROWSE_ONLY } from '$lib/fork';
   import { AssetVisibility, AssetOrderBy } from '@immich/sdk';
   import { ActionButton, CommandPaletteDefaultProvider } from '@immich/ui';
   import { mdiDotsVertical } from '@mdi/js';
@@ -91,7 +92,11 @@
     withStacked
   >
     {#snippet empty()}
-      <EmptyPlaceholder text={$t('no_assets_message')} onClick={() => openFileUploadDialog()} class="mx-auto mt-10" />
+      <EmptyPlaceholder
+        text={$t('no_assets_message')}
+        onClick={BROWSE_ONLY ? undefined : () => openFileUploadDialog()}
+        class="mx-auto mt-10"
+      />
     {/snippet}
   </Timeline>
 </UserPageLayout>

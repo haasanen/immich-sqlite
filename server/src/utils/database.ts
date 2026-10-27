@@ -1,4 +1,3 @@
-import { DatabaseConnectionParams, createPostgres } from '@immich/sql-tools';
 import {
   AliasedRawBuilder,
   DeduplicateJoinsPlugin,
@@ -6,20 +5,20 @@ import {
   ExpressionBuilder,
   Kysely,
   KyselyConfig,
+  LogEvent,
   NotNull,
   OperandValueExpression,
+  ParseJSONResultsPlugin,
   ReferenceExpression,
   SelectQueryBuilder,
   Selectable,
   ShallowDehydrateObject,
   SqlBool,
+  SqliteDialect,
   expressionBuilder,
   sql,
 } from 'kysely';
-import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
-import { PostgresJSDialect } from 'kysely-postgres-js';
-import { Notice, PostgresError } from 'postgres';
-import type { AudioStreamInfo, VectorExtension, VideoFormat, VideoPacketInfo, VideoStreamInfo } from 'src/types.js';
+import type { AudioStreamInfo, VideoFormat, VideoPacketInfo, VideoStreamInfo } from 'src/types.js';
 import { LockableProperty, Person, columns, lockableProperties } from 'src/database.js';
 import { DummyValue, GenerateSqlQueries } from 'src/decorators.js';
 import { AssetEditActionItem } from 'src/dtos/editing.dto.js';
@@ -37,7 +36,6 @@ import {
   AssetOrder,
   AssetOrderBy,
   AssetVisibility,
-  DatabaseExtension,
   ExifOrientation,
   SearchOrderField,
 } from 'src/enum.js';
@@ -49,43 +47,58 @@ import {
 import { DB } from 'src/schema/index.js';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table.js';
 import { fromChecksum } from 'src/utils/request.js';
+import { jsonArrayFrom, jsonObjectFrom } from 'src/utils/sql-json.js';
+import { SqliteConnectionParams, createSqliteHandle } from 'src/utils/sqlite-database.js';
 
-export const getKyselyConfig = (connection: DatabaseConnectionParams): KyselyConfig => {
-  return {
-    dialect: new PostgresJSDialect({
-      postgres: createPostgres({
-        connection,
-        onNotice: (notice: Notice) => {
-          if (notice['severity'] !== 'NOTICE') {
-            console.warn('Postgres notice:', notice);
-          }
-        },
-      }),
-    }),
-    log(event) {
-      if (event.level !== 'error') {
-        return;
-      }
+const logQueryFailure = (event: LogEvent) => {
+  if (event.level !== 'error') {
+    return;
+  }
 
-      if (isAssetChecksumConstraint(event.error)) {
-        return;
-      }
+  if (isAssetChecksumConstraint(event.error)) {
+    return;
+  }
 
-      console.error('Query failed :', {
-        durationMs: event.queryDurationMillis,
-        error: event.error,
-        sql: event.query.sql,
-        params: event.query.parameters,
-      });
-    },
-  };
+  console.error('Query failed :', {
+    durationMs: event.queryDurationMillis,
+    error: event.error,
+    sql: event.query.sql,
+    params: event.query.parameters,
+  });
+};
+
+export const getKyselyConfig = (connection: SqliteConnectionParams): KyselyConfig => {
+  if (connection.connectionType === 'sqlite') {
+    const handle = createSqliteHandle(connection.filename);
+    const base = new SqliteDialect({ database: handle as never });
+    // Kysely wraps dialects whose adapter reports supportsMultipleConnections=false
+    // in a global connection mutex. DatabaseRepository.withLock holds a connection()
+    // open across a callback that runs more queries on this.db -> self-deadlock.
+    // All sqlite "connections" here are the same better-sqlite3 handle and every
+    // statement executes synchronously, so concurrent use is safe: report true.
+    const dialect = {
+      createAdapter: () =>
+        new Proxy(base.createAdapter(), {
+          get: (target, prop) => (prop === 'supportsMultipleConnections' ? true : Reflect.get(target, prop)),
+        }),
+      createDriver: () => base.createDriver(),
+      createQueryCompiler: () => base.createQueryCompiler(),
+      createIntrospector: (db: never) => base.createIntrospector(db),
+    };
+    return {
+      dialect: dialect as unknown as KyselyConfig['dialect'],
+      plugins: [new ParseJSONResultsPlugin()],
+      log: logQueryFailure,
+    };
+  }
+  throw new Error('Postgres is not supported in this fork');
 };
 
 const uniqueIds = (ids: string[]) => [...new Set(ids)];
 
-export const asUuid = (id: string | Expression<string>) => sql<string>`${id}::uuid`;
+export const asUuid = (id: string | Expression<string>) => sql<string>`${id}`;
 
-export const anyUuid = (ids: string[]) => sql<string>`any(${`{${ids}}`}::uuid[])`;
+export const anyUuid = (ids: string[]) => sql<string>`any(${JSON.stringify(ids)})`;
 
 export const unnest = (array: string[]) => sql<Record<string, string>>`unnest(array[${sql.join(array)}]::text[])`;
 
@@ -99,34 +112,45 @@ export const removeUndefinedKeys = <T extends object>(update: T, template: unkno
   return update;
 };
 
-export const ASSET_CHECKSUM_CONSTRAINT = 'UQ_assets_owner_checksum';
-export const VIDEO_STREAM_SESSION_PK_CONSTRAINT = 'video_stream_session_pkey';
+// better-sqlite3 reports unique violations as
+// "UNIQUE constraint failed: <table>.<col>, ..." — even for named partial
+// unique indexes — so match by column signature.
+const isSqliteUniqueOn = (error: unknown, columns: string[]) => {
+  const message = (error as Error)?.message ?? '';
+  if (!/UNIQUE constraint failed:/i.test(message)) return false;
+  const tail = message.split(':', 2)[1]?.trim() ?? '';
+  const got = tail.split(',').map((s) => s.trim());
+  return got.length === columns.length && columns.every((c, i) => got[i] === c);
+};
 
 export const isAssetChecksumConstraint = (error: unknown) =>
-  (error as PostgresError)?.constraint_name === ASSET_CHECKSUM_CONSTRAINT;
+  isSqliteUniqueOn(error, ['asset.ownerId', 'asset.checksum']);
 
 export const isVideoStreamSessionPkConstraint = (error: unknown) =>
-  (error as PostgresError)?.constraint_name === VIDEO_STREAM_SESSION_PK_CONSTRAINT;
+  isSqliteUniqueOn(error, ['video_stream_session.id']);
+
+export const isSharedLinkSlugConstraint = (error: unknown) => isSqliteUniqueOn(error, ['shared_link.slug']);
 
 export function withDefaultVisibility<O>(qb: SelectQueryBuilder<DB, 'asset', O>) {
   return qb.where('asset.visibility', 'in', [sql.lit(AssetVisibility.Archive), sql.lit(AssetVisibility.Timeline)]);
 }
 
 const selectExifInfo = (eb: AssetExpressionBuilder) =>
-  eb.fn
-    .toJson(eb.table('asset_exif'))
+  jsonObjectFrom(eb.selectFrom('asset_exif').whereRef('asset_exif.assetId', '=', 'asset.id').selectAll('asset_exif'))
     .$castTo<ShallowDehydrateObject<Selectable<AssetExifTable>> | null>()
     .as('exifInfo');
 
 // TODO come up with a better query that only selects the fields we need
 export function withExif<O>(qb: SelectQueryBuilder<DB, 'asset', O>) {
+  // Callers filter/order on asset_exif.* columns, so the join must exist on
+  // both engines; the exifInfo payload itself is built per-dialect.
   return qb.leftJoin('asset_exif', 'asset.id', 'asset_exif.assetId').select(selectExifInfo);
 }
 
 export function withExifInner<O>(qb: SelectQueryBuilder<DB, 'asset', O>) {
   return qb
     .innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
-    .select((eb) => eb.fn.toJson(eb.table('asset_exif')).as('exifInfo'))
+    .select(selectExifInfo)
     .$narrowType<{ exifInfo: NotNull }>();
 }
 
@@ -253,6 +277,30 @@ export function withFacesAndPeople({ viewingUserId, withHidden, withDeletedFace 
     jsonArrayFrom(
       eb
         .selectFrom('asset_face')
+        .selectAll('asset_face')
+        .select((eb) =>
+          jsonObjectFrom(
+            eb
+              .selectFrom('person')
+              .selectAll('person')
+              .where(sql<SqlBool>`person."personGroupId" = asset_face."personGroupId"`)
+              .where(
+                viewingUserId
+                  ? sql<SqlBool>`person."ownerId" = ${viewingUserId}`
+                  : sql<SqlBool>`person."ownerId" = asset."ownerId"`,
+              ),
+          )
+            .$castTo<ShallowDehydrateObject<Person>>()
+            .as('person'),
+        )
+        .whereRef('asset_face.assetId', '=', 'asset.id')
+        .$if(!withDeletedFace, (qb) => qb.where('asset_face.deletedAt', 'is', null))
+        .$if(!withHidden, (qb) => qb.where('asset_face.isVisible', 'is', true)),
+    ).as('faces');
+  return (eb: ExpressionBuilder<DB, 'asset'>) =>
+    jsonArrayFrom(
+      eb
+        .selectFrom('asset_face')
         .leftJoinLateral(
           (eb) =>
             eb
@@ -356,7 +404,11 @@ export function withTags(eb: ExpressionBuilder<DB, 'asset'>) {
 }
 
 export function truncatedDate<O>(order: AssetOrderBy = AssetOrderBy.TakenAt, size?: 'DAY' | 'MONTH') {
-  return sql<O>`date_trunc(${sql.lit(size ?? 'MONTH')}, ${sql.ref(order === AssetOrderBy.CreatedAt ? 'asset.createdAt' : 'localDateTime')} AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
+  const col = sql.ref(order === AssetOrderBy.CreatedAt ? 'asset.createdAt' : 'localDateTime');
+  // values stored as UTC ISO text; strftime truncation matches date_trunc semantics
+  const fmt = (size ?? 'MONTH') === 'DAY' ? '%Y-%m-%d' : '%Y-%m-01';
+  return sql<O>`strftime(${sql.lit<string>(fmt)}, ${col})`;
+  return sql<O>`date_trunc(${sql.lit(size ?? 'MONTH')}, ${col} AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
 }
 
 export function withTagId<O>(qb: SelectQueryBuilder<DB, 'asset', O>, tagId: string) {
@@ -1098,33 +1150,6 @@ export const searchStatisticsV3Examples: GenerateSqlQueries[] = [
 ];
 
 export type ReindexVectorIndexOptions = { indexName: string; lists?: number };
-
-type VectorIndexQueryOptions = { table: string; vectorExtension: VectorExtension } & ReindexVectorIndexOptions;
-
-export function vectorIndexQuery({ vectorExtension, table, indexName, lists }: VectorIndexQueryOptions): string {
-  switch (vectorExtension) {
-    case DatabaseExtension.VectorChord: {
-      return `
-        CREATE INDEX IF NOT EXISTS ${indexName} ON ${table} USING vchordrq (embedding vector_cosine_ops) WITH (options = $$
-        residual_quantization = false
-        [build.internal]
-        lists = [${lists ?? 1}]
-        spherical_centroids = true
-        build_threads = 4
-        sampling_factor = 1024
-        $$)`;
-    }
-    case DatabaseExtension.Vector: {
-      return `
-        CREATE INDEX IF NOT EXISTS ${indexName} ON ${table}
-        USING hnsw (embedding vector_cosine_ops)
-        WITH (ef_construction = 300, m = 16)`;
-    }
-    default: {
-      throw new Error(`Unsupported vector extension: '${vectorExtension}'`);
-    }
-  }
-}
 
 export const updateLockedColumns = <T extends Record<string, unknown> & { lockedProperties?: LockableProperty[] }>(
   exif: T,
