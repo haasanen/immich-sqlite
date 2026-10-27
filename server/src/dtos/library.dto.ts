@@ -11,7 +11,7 @@ const stringArrayMax128 = z
 
 const CreateLibrarySchema = z
   .object({
-    ownerId: z.uuidv4().describe('Owner user ID'),
+    ownerId: z.uuid().describe('Owner user ID'),
     name: z.string().min(1).optional().describe('Library name'),
     importPaths: stringArrayMax128.optional().describe('Import paths (max 128)'),
     exclusionPatterns: stringArrayMax128.optional().describe('Exclusion patterns (max 128)'),
@@ -62,8 +62,8 @@ const ValidateLibraryResponseSchema = z
 
 const LibraryResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Library ID'),
-    ownerId: z.uuidv4().describe('Owner user ID'),
+    id: z.uuid().describe('Library ID'),
+    ownerId: z.uuid().describe('Owner user ID'),
     name: z.string().describe('Library name'),
     assetCount: z.int().describe('Number of assets'),
     importPaths: z.array(z.string()).describe('Import paths'),

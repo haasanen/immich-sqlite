@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { jsonObjectFrom } from 'kysely/helpers/postgres';
 import { DateTime } from 'luxon';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Insertable, Kysely, Updateable } from 'kysely';
@@ -8,6 +7,7 @@ import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { DB } from 'src/schema/index.js';
 import { SessionTable } from 'src/schema/tables/session.table.js';
 import { asUuid } from 'src/utils/database.js';
+import { jsonObjectFrom } from 'src/utils/sql-json.js';
 
 @Injectable()
 export class SessionRepository {

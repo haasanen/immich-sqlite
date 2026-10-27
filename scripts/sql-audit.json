@@ -1,0 +1,411 @@
+[
+ {
+  "file": "tag.repository.sql",
+  "lines": 178,
+  "tokens": {
+   "returning": 5,
+   "on_conflict": 5
+  },
+  "difficulty": "heavy"
+ },
+ {
+  "file": "album.repository.sql",
+  "lines": 449,
+  "tokens": {
+   "cast": 10,
+   "cast_uuid": 4,
+   "cast_text": 2,
+   "cast_ts": 2,
+   "unnest": 4,
+   "returning": 3,
+   "on_conflict": 3,
+   "at_time_zone": 2,
+   "coalesce": 6,
+   "left_join": 2,
+   "group_by": 2,
+   "exists": 6
+  },
+  "difficulty": "heavy"
+ },
+ {
+  "file": "asset.repository.sql",
+  "lines": 710,
+  "tokens": {
+   "cast": 39,
+   "cast_uuid": 17,
+   "cast_text": 5,
+   "cast_int": 2,
+   "cast_ts": 8,
+   "cast_interval": 1,
+   "array_agg": 17,
+   "unnest": 5,
+   "array_ctor": 2,
+   "any_array": 5,
+   "generate_series": 1,
+   "lateral": 3,
+   "returning": 1,
+   "on_conflict": 1,
+   "extract": 1,
+   "date_trunc": 4,
+   "at_time_zone": 20,
+   "coalesce": 25,
+   "case_when": 1,
+   "left_join": 6,
+   "group_by": 5,
+   "having": 1,
+   "exists": 3
+  },
+  "difficulty": "heavy"
+ },
+ {
+  "file": "person.repository.sql",
+  "lines": 1418,
+  "tokens": {
+   "cast": 21,
+   "cast_uuid": 6,
+   "cast_text": 1,
+   "any_array": 6,
+   "filter_agg": 2,
+   "returning": 3,
+   "earthdistance_op": 1,
+   "json_op": 5,
+   "coalesce": 25,
+   "left_join": 2,
+   "group_by": 3,
+   "having": 1,
+   "in_subquery": 6,
+   "exists": 7
+  },
+  "difficulty": "heavy"
+ },
+ {
+  "file": "search.repository.sql",
+  "lines": 1948,
+  "tokens": {
+   "cast": 49,
+   "cast_uuid": 49,
+   "any_array": 49,
+   "lateral": 1,
+   "ilike": 3,
+   "nulls_last": 2,
+   "earthdistance_op": 4,
+   "trgm": 1,
+   "json_op": 4,
+   "coalesce": 4,
+   "left_join": 31,
+   "group_by": 2,
+   "having": 2,
+   "in_subquery": 1,
+   "exists": 12
+  },
+  "difficulty": "heavy"
+ },
+ {
+  "file": "shared.link.asset.repository.sql",
+  "lines": 14,
+  "tokens": {
+   "on_conflict": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "move.repository.sql",
+  "lines": 24,
+  "tokens": {
+   "returning": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "album.user.repository.sql",
+  "lines": 26,
+  "tokens": {
+   "returning": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "cluster.group.repository.sql",
+  "lines": 72,
+  "tokens": {
+   "returning": 2,
+   "on_conflict": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "ocr.repository.sql",
+  "lines": 79,
+  "tokens": {
+   "on_conflict": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "activity.repository.sql",
+  "lines": 88,
+  "tokens": {
+   "cast": 1,
+   "cast_uuid": 1,
+   "lateral": 1,
+   "filter_agg": 2,
+   "returning": 1,
+   "left_join": 2
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "person.user.repository.sql",
+  "lines": 113,
+  "tokens": {
+   "cast": 4,
+   "cast_uuid": 3,
+   "unnest": 3,
+   "returning": 2,
+   "on_conflict": 2,
+   "exists": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "partner.repository.sql",
+  "lines": 154,
+  "tokens": {
+   "returning": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "duplicate.repository.sql",
+  "lines": 187,
+  "tokens": {
+   "cast": 7,
+   "cast_uuid": 7,
+   "any_array": 3,
+   "lateral": 2,
+   "coalesce": 2,
+   "group_by": 3,
+   "having": 1
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "access.repository.sql",
+  "lines": 343,
+  "tokens": {
+   "cast": 5,
+   "cast_uuid": 5,
+   "unnest": 2,
+   "array_ctor": 3,
+   "any_array": 2,
+   "left_join": 8,
+   "exists": 2
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "memory.repository.sql",
+  "lines": 361,
+  "tokens": {
+   "cast": 18,
+   "cast_ts": 6,
+   "nulls_last": 4,
+   "at_time_zone": 6,
+   "coalesce": 6,
+   "exists": 8
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "asset.job.repository.sql",
+  "lines": 865,
+  "tokens": {
+   "cast": 5,
+   "cast_uuid": 4,
+   "cast_text": 1,
+   "array_ctor": 1,
+   "any_array": 2,
+   "lateral": 1,
+   "coalesce": 14,
+   "case_when": 2,
+   "left_join": 6,
+   "exists": 9
+  },
+  "difficulty": "medium"
+ },
+ {
+  "file": "database.repository.sql",
+  "lines": 15,
+  "tokens": {},
+  "difficulty": "easy"
+ },
+ {
+  "file": "system.metadata.repository.sql",
+  "lines": 15,
+  "tokens": {},
+  "difficulty": "easy"
+ },
+ {
+  "file": "version.history.repository.sql",
+  "lines": 18,
+  "tokens": {},
+  "difficulty": "easy"
+ },
+ {
+  "file": "sync.checkpoint.repository.sql",
+  "lines": 20,
+  "tokens": {
+   "interval_lit": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "trash.repository.sql",
+  "lines": 28,
+  "tokens": {},
+  "difficulty": "easy"
+ },
+ {
+  "file": "asset.edit.repository.sql",
+  "lines": 35,
+  "tokens": {},
+  "difficulty": "easy"
+ },
+ {
+  "file": "view.repository.sql",
+  "lines": 36,
+  "tokens": {
+   "cast": 2,
+   "cast_uuid": 2,
+   "left_join": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "notification.repository.sql",
+  "lines": 41,
+  "tokens": {},
+  "difficulty": "easy"
+ },
+ {
+  "file": "map.repository.sql",
+  "lines": 52,
+  "tokens": {
+   "exists": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "api.key.repository.sql",
+  "lines": 59,
+  "tokens": {
+   "cast": 1,
+   "cast_uuid": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "library.repository.sql",
+  "lines": 67,
+  "tokens": {
+   "cast": 4,
+   "filter_agg": 2,
+   "coalesce": 1,
+   "left_join": 1,
+   "group_by": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "session.repository.sql",
+  "lines": 102,
+  "tokens": {
+   "cast": 1,
+   "cast_uuid": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "workflow.repository.sql",
+  "lines": 145,
+  "tokens": {
+   "coalesce": 3
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "stack.repository.sql",
+  "lines": 169,
+  "tokens": {
+   "cast": 2,
+   "cast_uuid": 2,
+   "lateral": 2,
+   "coalesce": 3,
+   "left_join": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "integrity.repository.sql",
+  "lines": 202,
+  "tokens": {
+   "cast": 2,
+   "cast_uuid": 2,
+   "left_join": 4,
+   "group_by": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "plugin.repository.sql",
+  "lines": 204,
+  "tokens": {
+   "coalesce": 5
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "video.stream.repository.sql",
+  "lines": 300,
+  "tokens": {
+   "case_when": 3,
+   "left_join": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "shared.link.repository.sql",
+  "lines": 398,
+  "tokens": {
+   "lateral": 7,
+   "filter_agg": 2,
+   "coalesce": 6,
+   "left_join": 8,
+   "group_by": 2
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "user.repository.sql",
+  "lines": 407,
+  "tokens": {
+   "cast": 2,
+   "cast_uuid": 2,
+   "filter_agg": 5,
+   "coalesce": 10,
+   "left_join": 3,
+   "group_by": 1
+  },
+  "difficulty": "easy"
+ },
+ {
+  "file": "sync.repository.sql",
+  "lines": 1229,
+  "tokens": {
+   "case_when": 3,
+   "left_join": 6,
+   "in_subquery": 13
+  },
+  "difficulty": "easy"
+ }
+]

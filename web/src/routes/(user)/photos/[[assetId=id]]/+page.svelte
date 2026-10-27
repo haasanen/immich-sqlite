@@ -27,6 +27,7 @@
   import { getAssetMediaUrl, memoryLaneTitle } from '$lib/utils';
   import { type OnLink, type OnUnlink } from '$lib/utils/actions';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
+  import { BROWSE_ONLY } from '$lib/fork';
   import { getAltText } from '$lib/utils/thumbnail-util';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { AssetVisibility } from '@immich/sdk';
@@ -107,7 +108,11 @@
       </ImageCarousel>
     {/if}
     {#snippet empty()}
-      <EmptyPlaceholder text={$t('no_assets_message')} onClick={() => openFileUploadDialog()} class="mx-auto mt-10" />
+      <EmptyPlaceholder
+        text={$t('no_assets_message')}
+        onClick={BROWSE_ONLY ? undefined : () => openFileUploadDialog()}
+        class="mx-auto mt-10"
+      />
     {/snippet}
   </Timeline>
 </UserPageLayout>

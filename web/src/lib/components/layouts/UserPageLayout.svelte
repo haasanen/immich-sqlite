@@ -8,6 +8,7 @@
   import UserSidebar from '$lib/components/shared-components/side-bar/UserSidebar.svelte';
   import type { HeaderButtonActionItem } from '$lib/types';
   import { openFileUploadDialog } from '$lib/utils/file-uploader';
+  import { BROWSE_ONLY } from '$lib/fork';
   import { Button, ContextMenuButton, HStack, isMenuItemType, type MenuItemType } from '@immich/ui';
   import type { Snippet } from 'svelte';
   import { t } from 'svelte-i18n';
@@ -48,7 +49,7 @@
 
 <header>
   {#if !hideNavbar}
-    <NavigationBar onUploadClick={() => openFileUploadDialog()} />
+    <NavigationBar onUploadClick={BROWSE_ONLY ? undefined : () => openFileUploadDialog()} />
   {/if}
 </header>
 <div
