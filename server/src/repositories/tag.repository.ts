@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import {
+  type InsertQueryBuilder,
+  type Insertable,
+  type Kysely,
+  type QueryCreator,
+  type Selectable,
+  type Updateable,
+  sql,
+} from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
-import type { InsertQueryBuilder, Insertable, Kysely, QueryCreator, Selectable, Updateable } from 'kysely';
 import { columns } from 'src/database.js';
 import { Chunked, ChunkedSet, DummyValue, GenerateSql } from 'src/decorators.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
@@ -231,6 +239,21 @@ export class TagRepository {
   }
 
   insertTagWithClosures(insertTag: (db: QueryCreator<DB>) => InsertQueryBuilder<DB, 'tag', Selectable<TagTable>>) {
+    return (async () => {
+      const created = await insertTag(this.db as never).executeTakeFirstOrThrow();
+      await this.db
+        .insertInto('tag_closure')
+        .values({ id_ancestor: created.id, id_descendant: created.id })
+        .onConflict((oc) => oc.doNothing())
+        .execute();
+      if (created.parentId) {
+        await sql`insert or ignore into "tag_closure" ("id_ancestor", "id_descendant") select "id_ancestor", ${created.id} from "tag_closure" where "id_descendant" = ${created.parentId}`.execute(
+          this.db as never,
+        );
+      }
+      return created;
+    })();
+
     return this.db
       .with('created_tag', insertTag)
       .with('created_tag_closures', (db) =>

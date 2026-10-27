@@ -3,23 +3,23 @@ import z from 'zod';
 import { ImmichHeader } from 'src/enum.js';
 
 const HlsSessionParamSchema = z.object({
-  id: z.uuidv4(),
-  sessionId: z.uuidv4(),
+  id: z.uuid(),
+  sessionId: z.uuid(),
 });
 
 export class HlsSessionParamDto extends createZodDto(HlsSessionParamSchema) {}
 
 const HlsVariantParamSchema = z.object({
-  id: z.uuidv4(),
-  sessionId: z.uuidv4(),
+  id: z.uuid(),
+  sessionId: z.uuid(),
   variantIndex: z.coerce.number().int().min(0),
 });
 
 export class HlsVariantParamDto extends createZodDto(HlsVariantParamSchema) {}
 
 const HlsSegmentParamSchema = z.object({
-  id: z.uuidv4(),
-  sessionId: z.uuidv4(),
+  id: z.uuid(),
+  sessionId: z.uuid(),
   variantIndex: z.coerce.number().int().min(0),
   filename: z.string().regex(/^(init\.mp4|seg_\d+\.m4s)$/, { error: 'Invalid HLS segment filename' }),
 });

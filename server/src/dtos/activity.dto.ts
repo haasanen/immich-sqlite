@@ -20,10 +20,10 @@ export type MaybeDuplicate<T> = { duplicate: boolean; value: T };
 
 const ActivityResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Activity ID'),
+    id: z.uuid().describe('Activity ID'),
     createdAt: isoDatetimeToDate.describe('Creation date'),
     user: UserResponseSchema,
-    assetId: z.uuidv4().nullable().describe('Asset ID (if activity is for an asset)'),
+    assetId: z.uuid().nullable().describe('Asset ID (if activity is for an asset)'),
     type: ReactionTypeSchema,
     comment: z.string().nullish().describe('Comment text (for comment activities)'),
   })
@@ -37,19 +37,19 @@ const ActivityStatisticsResponseSchema = z
   .meta({ id: 'ActivityStatisticsResponseDto' });
 
 const ActivitySchema = z.object({
-  albumId: z.uuidv4().describe('Album ID'),
-  assetId: z.uuidv4().optional().describe('Asset ID (if activity is for an asset)'),
+  albumId: z.uuid().describe('Album ID'),
+  assetId: z.uuid().optional().describe('Asset ID (if activity is for an asset)'),
 });
 
 const ActivitySearchSchema = ActivitySchema.extend({
   type: ReactionTypeSchema.optional(),
   level: ReactionLevelSchema.optional(),
-  userId: z.uuidv4().optional().describe('Filter by user ID'),
+  userId: z.uuid().optional().describe('Filter by user ID'),
 });
 
 const ActivityCreateSchema = ActivitySchema.extend({
   type: ReactionTypeSchema,
-  assetId: z.uuidv4().optional().describe('Asset ID (if activity is for an asset)'),
+  assetId: z.uuid().optional().describe('Asset ID (if activity is for an asset)'),
   comment: z.string().optional().describe('Comment text (required if type is comment)'),
 })
   .refine((data) => data.type !== ReactionType.COMMENT || (data.comment && data.comment.trim() !== ''), {

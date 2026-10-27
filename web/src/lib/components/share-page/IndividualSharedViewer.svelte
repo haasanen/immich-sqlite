@@ -14,6 +14,7 @@
   import { handlePromiseError } from '$lib/utils';
   import { downloadArchive } from '$lib/utils/asset-utils';
   import { fileUploadHandler, openFileUploadDialog } from '$lib/utils/file-uploader';
+  import { BROWSE_ONLY } from '$lib/fork';
   import { handleError } from '$lib/utils/handle-error';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { getAssetInfo, type SharedLinkResponseDto } from '@immich/sdk';
@@ -39,7 +40,9 @@
       return;
     }
 
-    handlePromiseError(handleUploadAssets(value.files));
+    if (!BROWSE_ONLY) {
+      handlePromiseError(handleUploadAssets(value.files));
+    }
     dragAndDropFilesStore.set({ isDragging: false, files: [] });
   });
 
@@ -112,7 +115,7 @@
         {/snippet}
 
         {#snippet trailing()}
-          {#if sharedLink?.allowUpload}
+          {#if !BROWSE_ONLY && sharedLink?.allowUpload}
             <IconButton
               shape="round"
               color="secondary"

@@ -537,14 +537,15 @@ class PersonAccess {
       .map(({ ownerId }) => ownerId)
       .toArray();
 
+    const peopleSql = sql<{ personGroupId: string; ownerId: string }>`(
+    select
+      je0.value as "personGroupId",
+      je1.value as "ownerId"
+    from json_each(pg_array_json(${personGroupIds})) as je0
+    join json_each(pg_array_json(${ownerIds})) as je1 on je0.key = je1.key
+  )`;
     return this.db
-      .selectFrom(
-        sql<{ personGroupId: string; ownerId: string }>`(
-      select
-        unnest(${personGroupIds}::uuid[]) as "personGroupId",
-        unnest(${ownerIds}::uuid[]) as "ownerId"
-    )`.as('people'),
-      )
+      .selectFrom(peopleSql.as('people'))
       .select(['personGroupId', 'ownerId'])
       .where((eb) =>
         eb.or([
