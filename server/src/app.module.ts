@@ -1,15 +1,14 @@
-import { BullModule } from '@nestjs/bullmq';
-import { Inject, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { DynamicModule, Inject, Module, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
+import { Kysely } from 'kysely';
 import { ClsModule } from 'nestjs-cls';
-import { KyselyModule } from 'nestjs-kysely';
 import { OpenTelemetryModule } from 'nestjs-otel';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { commandsAndQuestions } from 'src/commands/index.js';
 import { IWorker } from 'src/constants.js';
 import { controllers } from 'src/controllers/index.js';
-import { ImmichWorker } from 'src/enum.js';
+import { ImmichWorker, QueueName } from 'src/enum.js';
 import { MaintenanceAuthGuard } from 'src/maintenance/maintenance-auth.guard.js';
 import { MaintenanceHealthRepository } from 'src/maintenance/maintenance-health.repository.js';
 import { MaintenanceWebsocketRepository } from 'src/maintenance/maintenance-websocket.repository.js';
@@ -25,6 +24,7 @@ import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { DatabaseRepository } from 'src/repositories/database.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
 import { repositories } from 'src/repositories/index.js';
+import { LocalQueueModule } from 'src/repositories/local-queue.module.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { ProcessRepository } from 'src/repositories/process.repository.js';
 import { StorageRepository } from 'src/repositories/storage.repository.js';
@@ -32,12 +32,13 @@ import { SystemMetadataRepository } from 'src/repositories/system-metadata.repos
 import { TelemetryRepository, teardownTelemetry } from 'src/repositories/telemetry.repository.js';
 import { UserRepository } from 'src/repositories/user.repository.js';
 import { WebsocketRepository } from 'src/repositories/websocket.repository.js';
+import { DB } from 'src/schema/index.js';
 import { AuthService } from 'src/services/auth.service.js';
 import { CliService } from 'src/services/cli.service.js';
 import { DatabaseBackupService } from 'src/services/database-backup.service.js';
 import { services } from 'src/services/index.js';
 import { QueueService } from 'src/services/queue.service.js';
-import { getKyselyConfig } from 'src/utils/database.js';
+import { getKyselyConfig, serializeTransactions } from 'src/utils/database.js';
 import { configureUserAgent } from 'src/utils/fetch.js';
 
 const common = [...repositories, ...services, GlobalExceptionFilter];
@@ -53,15 +54,47 @@ const commonMiddleware = [
 const apiMiddleware = [FileUploadInterceptor, ...commonMiddleware, { provide: APP_GUARD, useClass: AuthGuard }];
 
 const configRepository = new ConfigRepository();
-const { bull, cls, database, otel } = configRepository.getEnv();
+const { cls, database, otel } = configRepository.getEnv();
 
-const commonImports = [
-  ClsModule.forRoot(cls.config),
-  KyselyModule.forRoot(getKyselyConfig(database.config)),
-  OpenTelemetryModule.forRoot(otel),
+// FORK: replaces nestjs-kysely KyselyModule.forRoot with the identical global
+// provider (token 'KyselyModuleConnectionToken'), but the client is wrapped in
+// serializeTransactions(): one synchronous SQLite handle means top-level
+// transactions must never overlap (interleaved begin/commit corrupts the shim's
+// savepoint emulation and silently loses writes), while plain queries and
+// streams deliberately stay interleaved.
+class KyselyClientHolder implements OnApplicationShutdown {
+  client = serializeTransactions(new Kysely<DB>(getKyselyConfig(database.config)));
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.client.destroy();
+  }
+}
+
+@Module({})
+class KyselyForkModuleDef {}
+
+const kyselyConnectionProvider = {
+  provide: 'KyselyModuleConnectionToken',
+  useFactory: (holder: KyselyClientHolder) => holder.client,
+  inject: [KyselyClientHolder],
+};
+
+const kyselyForkModule: DynamicModule = {
+  module: KyselyForkModuleDef,
+  global: true,
+  providers: [KyselyClientHolder, kyselyConnectionProvider],
+  exports: [kyselyConnectionProvider],
+};
+
+const commonImports = [ClsModule.forRoot(cls.config), kyselyForkModule, OpenTelemetryModule.forRoot(otel)];
+
+// Fork: embedded in-process queue (no Redis/BullMQ). Queue tuning lives here,
+// not in env config — upstream's BullMQ defaultJobOptions values are preserved.
+const queueImports = [
+  LocalQueueModule.register(Object.values(QueueName), {
+    defaultJobOptions: { attempts: 1, removeOnComplete: true, removeOnFail: false },
+  }),
 ];
-
-const bullImports = [BullModule.forRoot(bull.config), BullModule.registerQueue(...bull.queues)];
 
 // eslint-disable-next-line unicorn/no-top-level-side-effects
 configureUserAgent();
@@ -103,7 +136,7 @@ export class BaseModule implements OnModuleInit, OnModuleDestroy {
 }
 
 @Module({
-  imports: [...bullImports, ...commonImports, ScheduleModule.forRoot()],
+  imports: [...queueImports, ...commonImports, ScheduleModule.forRoot()],
   controllers: [...controllers],
   providers: [...common, ...apiMiddleware, { provide: IWorker, useValue: ImmichWorker.Api }],
 })
@@ -145,13 +178,13 @@ export class MaintenanceModule {
 }
 
 @Module({
-  imports: [...bullImports, ...commonImports],
+  imports: [...queueImports, ...commonImports],
   providers: [...common, { provide: IWorker, useValue: ImmichWorker.Microservices }, SchedulerRegistry],
 })
 export class MicroservicesModule extends BaseModule {}
 
 @Module({
-  imports: [...bullImports, ...commonImports],
+  imports: [...queueImports, ...commonImports],
   providers: [...common, ...commandsAndQuestions, SchedulerRegistry],
 })
 export class ImmichAdminModule implements OnModuleDestroy {

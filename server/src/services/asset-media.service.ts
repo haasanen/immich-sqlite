@@ -32,6 +32,7 @@ import { AuthRequest } from 'src/middleware/auth.guard.js';
 import { BaseService } from 'src/services/base.service.js';
 import { requireUploadAccess } from 'src/utils/access.js';
 import { asUploadRequest, onBeforeLink } from 'src/utils/asset.util.js';
+import { isBrowseOnly } from 'src/utils/browse-only.js';
 import { isAssetChecksumConstraint } from 'src/utils/database.js';
 import { ImmichFileResponse, getFileNameWithoutExtension, getFilenameExtension } from 'src/utils/file.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
@@ -122,12 +123,19 @@ export class AssetMediaService extends BaseService {
     await this.jobRepository.queue({ name: JobName.FileDelete, data: { files: [uploadPath] } });
   }
 
+  requireBrowseOnlyDisabled() {
+    if (isBrowseOnly()) {
+      throw new BadRequestException('Uploads are disabled: the server is in browse-only mode');
+    }
+  }
+
   async uploadAsset(
     auth: AuthDto,
     dto: AssetMediaCreateDto,
     file: UploadFile,
     sidecarFile?: UploadFile,
   ): Promise<AssetMediaResponseDto> {
+    this.requireBrowseOnlyDisabled();
     let asset: Asset | undefined;
     try {
       await this.requireAccess({
@@ -316,6 +324,7 @@ export class AssetMediaService extends BaseService {
   }
 
   async bulkUploadCheck(auth: AuthDto, dto: AssetBulkUploadCheckDto): Promise<AssetBulkUploadCheckResponseDto> {
+    this.requireBrowseOnlyDisabled();
     const checksums: Buffer[] = dto.assets.map((asset) => fromChecksum(asset.checksum));
     const results = await this.assetRepository.getByChecksums(auth.user.id, checksums);
     const checksumMap: Record<string, { id: string; isTrashed: boolean }> = {};

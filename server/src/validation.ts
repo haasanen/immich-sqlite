@@ -95,7 +95,7 @@ export class FileNotEmptyValidator extends FileValidator {
 }
 
 const UUIDParamSchema = z.object({
-  id: z.uuidv4(),
+  id: z.uuid(),
 });
 
 export class UUIDParamDto extends createZodDto(UUIDParamSchema) {}
@@ -107,8 +107,8 @@ const UUIDv7ParamSchema = z.object({
 export class UUIDv7ParamDto extends createZodDto(UUIDv7ParamSchema) {}
 
 const UUIDAssetIDParamSchema = z.object({
-  id: z.uuidv4(),
-  assetId: z.uuidv4(),
+  id: z.uuid(),
+  assetId: z.uuid(),
 });
 
 export class UUIDAssetIDParamDto extends createZodDto(UUIDAssetIDParamSchema) {}

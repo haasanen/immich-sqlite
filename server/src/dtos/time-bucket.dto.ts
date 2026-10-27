@@ -6,10 +6,10 @@ import { stringToBool } from 'src/validation.js';
 
 const TimeBucketQueryBaseSchema = z
   .object({
-    userId: z.uuidv4().optional().describe('Filter assets by specific user ID'),
-    albumId: z.uuidv4().optional().describe('Filter assets belonging to a specific album'),
-    personId: z.uuidv4().optional().describe('Filter assets containing a specific person (face recognition)'),
-    tagId: z.uuidv4().optional().describe('Filter assets with a specific tag'),
+    userId: z.uuid().optional().describe('Filter assets by specific user ID'),
+    albumId: z.uuid().optional().describe('Filter assets belonging to a specific album'),
+    personId: z.uuid().optional().describe('Filter assets containing a specific person (face recognition)'),
+    tagId: z.uuid().optional().describe('Filter assets with a specific tag'),
     isFavorite: stringToBool
       .optional()
       .describe('Filter by favorite status (true for favorites only, false for non-favorites only)'),

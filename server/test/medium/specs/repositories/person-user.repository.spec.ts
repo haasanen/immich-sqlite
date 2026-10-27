@@ -85,9 +85,7 @@ describe(PersonUserRepository.name, () => {
             role: PersonUserRole.Write,
           })
           .execute(),
-      ).rejects.toThrow(
-        'new row for relation "person_user" violates check constraint "person_user_sharedBy_sharedWith_chk"',
-      );
+      ).rejects.toThrow('CHECK constraint failed: person_user_sharedBy_sharedWith_chk');
     });
   });
 
