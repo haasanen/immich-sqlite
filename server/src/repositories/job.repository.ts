@@ -1,7 +1,5 @@
-import { getQueueToken } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { ModuleRef, Reflector } from '@nestjs/core';
-import { JobsOptions, Queue, Worker } from 'bullmq';
 import { setTimeout } from 'node:timers/promises';
 import type { JobCounts, JobItem, JobOf } from 'src/types.js';
 import { JobConfig } from 'src/decorators.js';
@@ -9,6 +7,12 @@ import { QueueJobResponseDto, QueueJobSearchDto } from 'src/dtos/queue.dto.js';
 import { ImmichWorker, JobName, JobStatus, MetadataKey, QueueCleanType, QueueJobStatus, QueueName } from 'src/enum.js';
 import { ConfigRepository } from 'src/repositories/config.repository.js';
 import { EventRepository } from 'src/repositories/event.repository.js';
+import {
+  LocalJobsOptions as JobsOptions,
+  LocalQueue as Queue,
+  LocalWorker as Worker,
+} from 'src/repositories/local-queue.js';
+import { getQueueToken } from 'src/repositories/local-queue.module.js';
 import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { ImmichStartupError, getKeyByValue, getMethodNames } from 'src/utils/misc.js';
 
@@ -88,19 +92,19 @@ export class JobRepository {
   }
 
   startWorkers() {
-    const { bull } = this.configRepository.getEnv();
     for (const queueName of Object.values(QueueName)) {
       this.logger.debug(`Starting worker for queue: ${queueName}`);
       this.workers[queueName] = new Worker(
-        queueName,
+        this.getQueue(queueName),
         (job) => this.eventRepository.emit('JobRun', queueName, job as JobItem),
-        { ...bull.config, concurrency: 1, name: ImmichWorker.Microservices },
+        1,
+        `${queueName}:w:${ImmichWorker.Microservices}`,
       );
     }
   }
 
   watchWorkers() {
-    this.workerWatcher ??= setInterval(() => void this.checkWorkers(), WORKER_WATCH_INTERVAL_MS);
+    this.workerWatcher ??= setInterval(() => this.checkWorkers(), WORKER_WATCH_INTERVAL_MS);
   }
 
   teardown() {
@@ -112,11 +116,11 @@ export class JobRepository {
     this.workerWatcher = undefined;
   }
 
-  private async checkWorkers() {
+  private checkWorkers() {
     let isPresent: boolean;
     try {
       const suffix = `:w:${ImmichWorker.Microservices}`;
-      const workers = await this.getQueue(QueueName.BackgroundTask).getWorkers();
+      const workers = this.getQueue(QueueName.BackgroundTask).getWorkers();
       isPresent = workers.some((worker) => worker.rawname?.endsWith(suffix));
     } catch {
       return;
@@ -154,30 +158,29 @@ export class JobRepository {
     worker.concurrency = concurrency;
   }
 
-  async isActive(name: QueueName): Promise<boolean> {
+  isActive(name: QueueName): Promise<boolean> {
     const queue = this.getQueue(name);
-    const count = await queue.getActiveCount();
-    return count > 0;
+    return Promise.resolve(queue.getActiveCount() > 0);
   }
 
-  async isPaused(name: QueueName): Promise<boolean> {
-    return this.getQueue(name).isPaused();
+  isPaused(name: QueueName): Promise<boolean> {
+    return Promise.resolve(this.getQueue(name).isPaused());
   }
 
-  pause(name: QueueName) {
-    return this.getQueue(name).pause();
+  pause(name: QueueName): Promise<void> {
+    return Promise.resolve(this.getQueue(name).pause());
   }
 
-  resume(name: QueueName) {
-    return this.getQueue(name).resume();
+  resume(name: QueueName): Promise<void> {
+    return Promise.resolve(this.getQueue(name).resume());
   }
 
-  empty(name: QueueName) {
-    return this.getQueue(name).drain();
+  empty(name: QueueName): Promise<number> {
+    return Promise.resolve(this.getQueue(name).drain());
   }
 
-  clear(name: QueueName, type: QueueCleanType) {
-    return this.getQueue(name).clean(0, 1000, type);
+  clear(name: QueueName, type: QueueCleanType): Promise<string[]> {
+    return Promise.resolve(this.getQueue(name).clean(0, 1000, type));
   }
 
   getJobCounts(name: QueueName): Promise<JobCounts> {
@@ -212,7 +215,7 @@ export class JobRepository {
 
       if (job.options?.jobId || job.options?.deduplication) {
         // need to use add() instead of addBulk() for jobId/deduplication to take effect
-        promises.push(this.getQueue(queueName).add(item.name, item.data, job.options));
+        promises.push(Promise.resolve(this.getQueue(queueName).add(item.name, item.data, job.options)));
       } else {
         itemsByQueue[queueName] ||= [];
         itemsByQueue[queueName].push(job);
@@ -221,7 +224,7 @@ export class JobRepository {
 
     for (const [queueName, jobs] of Object.entries(itemsByQueue)) {
       const queue = this.getQueue(queueName as QueueName);
-      promises.push(queue.addBulk(jobs));
+      promises.push(Promise.resolve(queue.addBulk(jobs)));
     }
 
     await Promise.all(promises);
@@ -232,26 +235,28 @@ export class JobRepository {
   }
 
   async waitForQueueCompletion(...queues: QueueName[]): Promise<void> {
-    const getPending = async () => {
-      const results = await Promise.all(queues.map(async (name) => ({ pending: await this.isActive(name), name })));
+    const getPending = () => {
+      const results = queues.map((name) => ({ pending: this.getQueue(name).getActiveCount() > 0, name }));
       return results.filter(({ pending }) => pending).map(({ name }) => name);
     };
 
-    let pending = await getPending();
+    let pending = getPending();
 
     while (pending.length > 0) {
       this.logger.verbose(`Waiting for ${pending[0]} queue to stop...`);
       await setTimeout(1000);
-      pending = await getPending();
+      pending = getPending();
     }
   }
 
-  async searchJobs(name: QueueName, dto: QueueJobSearchDto): Promise<QueueJobResponseDto[]> {
-    const jobs = await this.getQueue(name).getJobs(dto.status ?? Object.values(QueueJobStatus), 0, 1000);
-    return jobs.map((job) => {
-      const { id, name, timestamp, data } = job;
-      return { id, name: name as JobName, timestamp, data };
-    });
+  searchJobs(name: QueueName, dto: QueueJobSearchDto): Promise<QueueJobResponseDto[]> {
+    const jobs = this.getQueue(name).getJobs(dto.status ?? Object.values(QueueJobStatus), 0, 1000);
+    return Promise.resolve(
+      jobs.map((job) => {
+        const { id, name, timestamp, data } = job;
+        return { id, name: name as JobName, timestamp, data };
+      }),
+    );
   }
 
   private getJobOptions(item: JobItem): JobsOptions | null {
@@ -289,10 +294,7 @@ export class JobRepository {
 
   /** @deprecated */
   // todo: remove this when asset notifications no longer need it.
-  public async removeJob(name: JobName, jobID: string): Promise<void> {
-    const existingJob = await this.getQueue(this.getQueueName(name)).getJob(jobID);
-    if (existingJob) {
-      await existingJob.remove();
-    }
+  public removeJob(name: JobName, jobID: string): Promise<void> {
+    return Promise.resolve(this.getQueue(this.getQueueName(name)).remove(jobID));
   }
 }

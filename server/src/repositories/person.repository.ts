@@ -4,11 +4,11 @@ import {
   type Insertable,
   type Kysely,
   type SqlBool,
+  type Transaction,
   type Updateable,
   expressionBuilder,
   sql,
 } from 'kysely';
-import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { AssetFace, PersonUser, columns } from 'src/database.js';
 import { Chunked, ChunkedArray, DummyValue, GenerateSql } from 'src/decorators.js';
@@ -20,9 +20,11 @@ import { AssetFaceTable } from 'src/schema/tables/asset-face.table.js';
 import { FaceSearchTable } from 'src/schema/tables/face-search.table.js';
 import { PersonGroupTable } from 'src/schema/tables/person-group.table.js';
 import { PersonTable } from 'src/schema/tables/person.table.js';
-import { anyUuid, dummy, inSharedAlbum, removeUndefinedKeys, withFilePath } from 'src/utils/database.js';
+import { anyUuid, inSharedAlbum, removeUndefinedKeys, withFilePath } from 'src/utils/database.js';
 import { isLeapDayObserved } from 'src/utils/date.js';
 import { type PaginationOptions, paginationHelper } from 'src/utils/pagination.js';
+import { jsonArrayFrom, jsonObjectFrom } from 'src/utils/sql-json.js';
+import { uuidv7 } from 'src/utils/sqlite-database.js';
 
 export interface PersonFilterOptions {
   sharedById?: string;
@@ -486,7 +488,16 @@ export class PersonRepository {
       )
       .select(['counts.total', 'counts.hidden'])
       .select((eb) =>
-        jsonArrayFrom(eb.selectFrom('page as person').selectAll('person').select(withSharing(userId))).as('people'),
+        jsonArrayFrom(
+          eb
+            .selectFrom('page as person')
+            .selectAll('person')
+            .$call((qb) =>
+              // the CTE-added faceCount column is invisible to star expansion in SQLite
+              qb.select(sql`"person"."faceCount"`.as('faceCount')),
+            )
+            .select(withSharing(userId)),
+        ).as('people'),
       )
       .executeTakeFirstOrThrow();
 
@@ -726,65 +737,42 @@ export class PersonRepository {
         )
         .execute();
 
-      // the rest is shared with someone else, so this user gets a group of their own for each
-      const mapping = await trx
-        .with('shared', (db) =>
-          db
-            .selectFrom('person')
-            .select('person.personGroupId as oldId')
-            .distinct()
-            .where('person.ownerId', '=', userId)
-            .where(({ exists, selectFrom }) =>
-              exists(
-                selectFrom('person as other')
-                  .select('other.personGroupId')
-                  .whereRef('other.personGroupId', '=', 'person.personGroupId')
-                  .where('other.ownerId', '!=', userId),
-              ),
-            ),
-        )
-        .with(
-          (cte) => cte('mapping').materialized(),
-          (db) => db.selectFrom('shared').select(['shared.oldId', sql<string>`uuid_generate_v4()`.as('newId')]),
-        )
-        .with('created', (db) =>
-          db
-            .insertInto('person_group')
-            .columns(['id', 'clusterGroupId'])
-            .expression((eb) =>
-              eb.selectFrom('mapping').select(['mapping.newId', sql.val(newClusterId).as('clusterGroupId')]),
-            ),
-        )
-        .selectFrom('mapping')
-        .select(['mapping.oldId', 'mapping.newId'])
-        .execute();
+      await this.reassignClusterSharedSqlite(trx, userId, newClusterId);
+    });
+  }
 
-      if (mapping.length === 0) {
-        return;
-      }
+  /** SQLite port of the data-modifying-CTE remap in reassignCluster: create a
+   *  fresh group per shared person-group, then repoint this user's people and
+   *  their faces sequentially. */
+  private async reassignClusterSharedSqlite(trx: Transaction<DB>, userId: string, newClusterId: string): Promise<void> {
+    const shared = await trx
+      .selectFrom('person')
+      .select('person.personGroupId as oldId')
+      .distinct()
+      .where('person.ownerId', '=', userId)
+      .where(({ exists, selectFrom }) =>
+        exists(
+          selectFrom('person as other')
+            .select('other.personGroupId')
+            .whereRef('other.personGroupId', '=', 'person.personGroupId')
+            .where('other.ownerId', '!=', userId),
+        ),
+      )
+      .execute();
 
-      const oldIds = mapping.map(({ oldId }) => oldId);
-      const newIds = mapping.map(({ newId }) => newId);
-      const remapped = sql<{
-        oldId: string;
-        newId: string;
-      }>`(select unnest(${`{${oldIds}}`}::uuid[]) as "oldId", unnest(${`{${newIds}}`}::uuid[]) as "newId")`.as(
-        'mapping',
-      );
-
+    for (const { oldId } of shared) {
+      const newId = uuidv7();
+      await trx.insertInto('person_group').values({ id: newId, clusterGroupId: newClusterId }).execute();
       await trx
         .updateTable('person')
-        .from(remapped)
-        .set((eb) => ({ personGroupId: eb.ref('mapping.newId') }))
-        .whereRef('person.personGroupId', '=', 'mapping.oldId')
+        .set({ personGroupId: newId })
+        .where('person.personGroupId', '=', oldId)
         .where('person.ownerId', '=', userId)
         .execute();
-
       await trx
         .updateTable('asset_face')
-        .from(remapped)
-        .set((eb) => ({ personGroupId: eb.ref('mapping.newId') }))
-        .whereRef('asset_face.personGroupId', '=', 'mapping.oldId')
+        .set({ personGroupId: newId })
+        .where('asset_face.personGroupId', '=', oldId)
         .where(({ exists, selectFrom }) =>
           exists(
             selectFrom('asset')
@@ -794,7 +782,7 @@ export class PersonRepository {
           ),
         )
         .execute();
-    });
+    }
   }
 
   @GenerateSql({ params: [DummyValue.UUID, 2] })
@@ -812,26 +800,24 @@ export class PersonRepository {
     faceIdsToRemove: string[],
     embeddingsToAdd?: Insertable<FaceSearchTable>[],
   ): Promise<void> {
-    let query = this.db;
-    if (facesToAdd.length > 0) {
-      (query as any) = query.with('added', (db) => db.insertInto('asset_face').values(facesToAdd).returning('id'));
-    }
-
-    if (faceIdsToRemove.length > 0) {
-      (query as any) = query.with('removed', (db) =>
-        db
+    // SQLite has no data-modifying CTEs; run the same DML sequentially in
+    // one transaction (single writer, so the PG deadlock-avoidance trick is
+    // unnecessary).
+    await this.db.transaction().execute(async (trx) => {
+      if (facesToAdd.length > 0) {
+        await trx.insertInto('asset_face').values(facesToAdd).execute();
+      }
+      if (faceIdsToRemove.length > 0) {
+        await trx
           .deleteFrom('asset_face')
-          .where('asset_face.id', '=', (eb) => eb.fn.any(eb.val(faceIdsToRemove)))
-          // ensure insert happens first to prevent deadlock on concurrent updates
-          .$if(facesToAdd.length > 0, (qb) => qb.where(sql<SqlBool>`exists (select from added)`)),
-      );
-    }
-
-    if (embeddingsToAdd?.length) {
-      (query as any) = query.with('added_embeddings', (db) => db.insertInto('face_search').values(embeddingsToAdd));
-    }
-
-    await query.selectFrom(dummy).execute();
+          .where(sql<SqlBool>`asset_face.id in (select value from json_each(${JSON.stringify(faceIdsToRemove)}))`)
+          .execute();
+      }
+      if (embeddingsToAdd?.length) {
+        await trx.insertInto('face_search').values(embeddingsToAdd).execute();
+      }
+    });
+    return;
   }
 
   async update(person: Updateable<PersonTable> & PersonId) {
