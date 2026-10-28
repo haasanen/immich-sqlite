@@ -15,10 +15,51 @@ export class SessionRepository {
 
   constructor(@InjectKysely() private db: Kysely<DB>) {}
 
-  // diagnostics (h8): boot-time session disappearance forensics
-  async debugState() {
-    const rows = await this.db.selectFrom('session').select(['id', 'createdAt', 'expiresAt', 'userId']).execute();
-    return { count: rows.length, rows };
+  // diagnostics (h8/h9): auth-rejection forensics. Staged so a single log line
+  // names the failing predicate: token-buffer match, session row, user row.
+  async debugState(hashedToken?: Buffer) {
+    const rows = await this.db
+      .selectFrom('session')
+      .select(['id', 'createdAt', 'expiresAt', 'userId', 'token'])
+      .execute();
+    const userCount = await this.db
+      .selectFrom('user')
+      .select((eb) => eb.fn.countAll<number>().as('c'))
+      .executeTakeFirst();
+    let tokenMatches = -1;
+    let matchedUserId: string | null = null;
+    let userRow: { id: string; deletedAt: Date | null } | undefined;
+    if (hashedToken) {
+      const matches = await this.db
+        .selectFrom('session')
+        .select(['id', 'userId'])
+        .where('token', '=', hashedToken)
+        .execute();
+      tokenMatches = matches.length;
+      matchedUserId = matches[0]?.userId ?? rows[0]?.userId ?? null;
+      if (matchedUserId) {
+        userRow = await this.db
+          .selectFrom('user')
+          .select(['id', 'deletedAt'])
+          .where('id', '=', matchedUserId)
+          .executeTakeFirst();
+      }
+    }
+    return {
+      count: rows.length,
+      rows: rows.map((r) => ({
+        id: r.id,
+        created: r.createdAt,
+        expires: r.expiresAt,
+        userId: r.userId,
+        tokenLen: r.token?.byteLength ?? -1,
+        tokenHash: r.token ? Buffer.from(r.token).toString('hex').slice(0, 12) : null,
+      })),
+      tokenMatches,
+      matchedUserId,
+      userRow: userRow ? { id: userRow.id, deletedAt: userRow.deletedAt } : null,
+      userCount: userCount?.c ?? -1,
+    };
   }
 
   private traceDelete(op: string) {

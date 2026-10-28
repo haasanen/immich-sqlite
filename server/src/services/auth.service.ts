@@ -588,11 +588,19 @@ export class AuthService extends BaseService {
       };
     }
 
-    const state = await this.sessionRepository.debugState();
+    const state = await this.sessionRepository.debugState(hashed);
     this.logger.warn(
-      `Session token rejected: no session/user match for token hash ${hashed.toString('hex').slice(0, 12)}…; ` +
-        `session table count=${state.count} rows=${JSON.stringify(
-          state.rows.map((r) => ({ id: r.id.slice(0, 8), created: r.createdAt, expires: r.expiresAt })),
+      `Session token rejected: presented hash=${hashed.toString('hex').slice(0, 12)}… ` +
+        `tokenMatches=${state.tokenMatches} matchedUserId=${state.matchedUserId} ` +
+        `userRow=${JSON.stringify(state.userRow)} userCount=${state.userCount} ` +
+        `sessionCount=${state.count} sessions=${JSON.stringify(
+          state.rows.map((r) => ({
+            id: r.id.slice(0, 8),
+            created: r.created,
+            expires: r.expires,
+            userId: r.userId,
+            tokenHash: r.tokenHash,
+          })),
         )}`,
     );
     throw new UnauthorizedException('Invalid user token');
@@ -627,6 +635,9 @@ export class AuthService extends BaseService {
   ) {
     const token = this.cryptoRepository.randomBytesAsText(32);
     const hashed = this.cryptoRepository.hashSha256(token);
+
+    // diagnostics (h9): correlate issued session hash with rejection dumps
+    this.logger.log(`Session issued: hash=${hashed.toString('hex').slice(0, 12)}… userId=${user.id}`);
 
     await this.sessionRepository.create({
       token: hashed,

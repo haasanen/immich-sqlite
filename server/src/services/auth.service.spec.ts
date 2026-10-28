@@ -40,7 +40,14 @@ describe(AuthService.name, () => {
 
     mocks.oauth.authorize.mockResolvedValue({ url: 'http://test', state: 'state', codeVerifier: 'codeVerifier' });
     mocks.oauth.getLogoutEndpoint.mockResolvedValue('http://end-session-endpoint');
-    mocks.session.debugState.mockResolvedValue({ count: 0, rows: [] });
+    mocks.session.debugState.mockResolvedValue({
+      count: 0,
+      rows: [],
+      tokenMatches: 0,
+      matchedUserId: null,
+      userRow: null,
+      userCount: 0,
+    });
   });
 
   it('should be defined', () => {
