@@ -11,7 +11,7 @@ export class CreateProfileImageDto {
 
 const CreateProfileImageResponseSchema = z
   .object({
-    userId: z.uuidv4().describe('User ID'),
+    userId: z.uuid().describe('User ID'),
     profileChangedAt: isoDatetimeToDate.describe('Profile image change date'),
     profileImagePath: z.string().describe('Profile image file path'),
   })

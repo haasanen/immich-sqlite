@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { type Kysely, type OrderByDirection, type Selectable, type ShallowDehydrateObject, sql } from 'kysely';
+import {
+  type Kysely,
+  type OrderByDirection,
+  type Selectable,
+  type ShallowDehydrateObject,
+  type SqlBool,
+  sql,
+} from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import z from 'zod';
 import { columns } from 'src/database.js';
@@ -22,6 +29,7 @@ import {
   withSearchOrder,
 } from 'src/utils/database.js';
 import { type PaginationOptions, paginationHelper } from 'src/utils/pagination.js';
+import { unaccentFold } from 'src/utils/sqlite-database.js';
 
 export interface SearchAssetIdOptions {
   checksum?: Buffer;
@@ -400,10 +408,37 @@ export class SearchRepository {
   }
 
   @GenerateSql({ params: [DummyValue.STRING] })
+  // FORK (SQLite): trigram prefilter against the FTS5 shadow index built by
+  // MapRepository.buildPlacesTrgmIndex. Returns null when the prefilter would not
+  // be superset-safe (a needle word shorter than 3 chars can match via padded
+  // trigrams without sharing a 3-char substring); the query then runs unfiltered,
+  // equivalent to the unindexable upstream plan.
+  private placesTrgmPrefilter(placeName: string): string | null {
+    const words = unaccentFold(placeName)
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean);
+    if (words.length === 0 || words.some((w) => w.length < 3)) {
+      return null;
+    }
+    const grams = new Set<string>();
+    for (const word of words) {
+      for (let i = 0; i + 3 <= word.length; i++) {
+        grams.add(word.slice(i, i + 3));
+      }
+    }
+    return [...grams].map((g) => `"${g}"`).join(' OR ');
+  }
+
   searchPlaces(placeName: string) {
+    const prefilter = this.placesTrgmPrefilter(placeName);
     return this.db
       .selectFrom('geodata_places')
       .selectAll()
+      .$if(prefilter !== null, (qb) =>
+        qb.where(
+          sql<SqlBool>`rowid in (select rowid from geodata_places_trgm where geodata_places_trgm match ${prefilter})`,
+        ),
+      )
       .where(
         () =>
           // kysely doesn't support trigram %>> or <->>> operators
