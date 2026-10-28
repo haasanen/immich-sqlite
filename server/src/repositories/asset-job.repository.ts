@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { type Kysely, sql } from 'kysely';
-import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
@@ -21,6 +20,7 @@ import {
   withVideoStream,
 } from 'src/utils/database.js';
 import { mimeTypes } from 'src/utils/mime-types.js';
+import { jsonArrayFrom, jsonObjectFrom } from 'src/utils/sql-json.js';
 
 @Injectable()
 export class AssetJobRepository {
@@ -291,32 +291,28 @@ export class AssetJobRepository {
       ])
       .$call(withExif)
       .select(withFiles)
-      .leftJoinLateral(
-        (eb) =>
-          eb
-            .selectFrom('stack')
-            .whereRef('stack.id', '=', 'asset.stackId')
-            .select((eb) => [
-              'stack.id',
-              'stack.primaryAssetId',
-              jsonArrayFrom(
-                eb
-                  .selectFrom('asset as stack_asset')
-                  .select(['stack_asset.id'])
-                  .whereRef('stack_asset.stackId', '=', 'stack.id')
-                  .whereRef('stack_asset.id', '!=', 'stack.primaryAssetId')
-                  .where('stack_asset.visibility', '=', sql.val(AssetVisibility.Timeline))
-                  .where('stack_asset.status', '!=', sql.val(AssetStatus.Deleted)),
-              ).as('assets'),
-            ])
-            .as('stack_result'),
-        (join) => join.onTrue(),
-      )
-      .select((eb) =>
-        eb.fn
-          .toJson(eb.table('stack_result'))
-          .$castTo<{ id: string; primaryAssetId: string; assets: { id: string }[] } | null>()
-          .as('stack'),
+
+      .$call((qb) =>
+        qb.select((eb) =>
+          jsonObjectFrom(
+            eb
+              .selectFrom('stack')
+              .whereRef('stack.id', '=', 'asset.stackId')
+              .select((eb) => [
+                'stack.id',
+                'stack.primaryAssetId',
+                jsonArrayFrom(
+                  eb
+                    .selectFrom('asset as stack_asset')
+                    .select(['stack_asset.id'])
+                    .whereRef('stack_asset.stackId', '=', 'stack.id')
+                    .whereRef('stack_asset.id', '!=', 'stack.primaryAssetId')
+                    .where('stack_asset.visibility', '=', sql.val(AssetVisibility.Timeline))
+                    .where('stack_asset.status', '!=', sql.val(AssetStatus.Deleted)),
+                ).as('assets'),
+              ]),
+          ).as('stack'),
+        ),
       )
       .where('asset.id', '=', id)
       .executeTakeFirst();

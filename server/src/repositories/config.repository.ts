@@ -1,29 +1,16 @@
-import { DatabaseConnectionParams } from '@immich/sql-tools';
-import { RegisterQueueOptions } from '@nestjs/bullmq';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { QueueOptions } from 'bullmq';
 import { Request, Response } from 'express';
 import { HelmetOptions } from 'helmet';
-import { RedisOptions } from 'ioredis';
 import { CLS_ID, ClsModuleOptions } from 'nestjs-cls';
 import { OpenTelemetryModuleOptions } from 'nestjs-otel/lib/interfaces/index.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { VectorExtension } from 'src/types.js';
 import { IWorker, citiesFile } from 'src/constants.js';
 import { Telemetry } from 'src/decorators.js';
 import { EnvSchema } from 'src/dtos/env.dto.js';
-import {
-  DatabaseExtension,
-  ImmichEnvironment,
-  ImmichHeader,
-  ImmichTelemetry,
-  ImmichWorker,
-  LogFormat,
-  LogLevel,
-  QueueName,
-} from 'src/enum.js';
+import { ImmichEnvironment, ImmichHeader, ImmichTelemetry, ImmichWorker, LogFormat, LogLevel } from 'src/enum.js';
 import { setDifference } from 'src/utils/set.js';
+import { SqliteConnectionParams } from 'src/utils/sqlite-database.js';
 
 export interface EnvData {
   host?: string;
@@ -49,11 +36,6 @@ export interface EnvData {
     thirdPartySupportUrl?: string;
   };
 
-  bull: {
-    config: QueueOptions;
-    queues: RegisterQueueOptions[];
-  };
-
   cls: {
     config: ClsModuleOptions;
   };
@@ -63,9 +45,8 @@ export interface EnvData {
   };
 
   database: {
-    config: DatabaseConnectionParams;
+    config: SqliteConnectionParams;
     skipMigrations: boolean;
-    vectorExtension?: VectorExtension;
   };
 
   licensePublicKey: {
@@ -100,7 +81,7 @@ export interface EnvData {
     corePlugin: string;
   };
 
-  redis: RedisOptions;
+  redis: null;
 
   setup: {
     allow: boolean;
@@ -196,24 +177,6 @@ const getEnv = (): EnvData => {
     web: join(buildFolder, 'www'),
   };
 
-  let redisConfig = {
-    host: dto.REDIS_HOSTNAME || 'redis',
-    port: dto.REDIS_PORT || 6379,
-    db: dto.REDIS_DBINDEX || 0,
-    username: dto.REDIS_USERNAME || undefined,
-    password: dto.REDIS_PASSWORD || undefined,
-    path: dto.REDIS_SOCKET || undefined,
-  };
-
-  const redisUrl = dto.REDIS_URL;
-  if (redisUrl && redisUrl.startsWith('ioredis://')) {
-    try {
-      redisConfig = JSON.parse(Buffer.from(redisUrl.slice(10), 'base64').toString());
-    } catch (error) {
-      throw new Error('Failed to decode redis options', { cause: error });
-    }
-  }
-
   const includedTelemetries =
     dto.IMMICH_TELEMETRY_INCLUDE === 'all'
       ? new Set(Object.values(ImmichTelemetry))
@@ -227,31 +190,14 @@ const getEnv = (): EnvData => {
     }
   }
 
-  const databaseConnection: DatabaseConnectionParams = dto.DB_URL
-    ? { connectionType: 'url', url: dto.DB_URL }
-    : {
-        connectionType: 'parts',
-        host: dto.DB_HOSTNAME || 'database',
-        port: dto.DB_PORT || 5432,
-        username: dto.DB_USERNAME || 'postgres',
-        password: dto.DB_PASSWORD || 'postgres',
-        database: dto.DB_DATABASE_NAME || 'immich',
-        ssl: dto.DB_SSL_MODE || undefined,
-      };
-
-  let vectorExtension: VectorExtension | undefined;
-  if (dto.DB_VECTOR_EXTENSION) {
-    switch (dto.DB_VECTOR_EXTENSION) {
-      case 'pgvector': {
-        vectorExtension = DatabaseExtension.Vector;
-        break;
-      }
-      case 'vectorchord': {
-        vectorExtension = DatabaseExtension.VectorChord;
-        break;
-      }
-    }
-  }
+  // This fork is SQLite-only: there is no engine selection in the product,
+  // and no Postgres code paths or harness remain.
+  const databaseConnection: SqliteConnectionParams = {
+    connectionType: 'sqlite',
+    // fork default: live on the /data volume so the whole product state
+    // (library DB included) survives container recreation with zero config
+    filename: dto.DB_LOCATION ?? join(dto.IMMICH_MEDIA_LOCATION ?? '/data', 'immich.db'),
+  };
 
   return {
     host: dto.IMMICH_HOST,
@@ -277,19 +223,6 @@ const getEnv = (): EnvData => {
       thirdPartySupportUrl: dto.IMMICH_THIRD_PARTY_SUPPORT_URL,
     },
 
-    bull: {
-      config: {
-        prefix: 'immich_bull',
-        connection: { ...redisConfig },
-        defaultJobOptions: {
-          attempts: 1,
-          removeOnComplete: true,
-          removeOnFail: false,
-        },
-      },
-      queues: Object.values(QueueName).map((name) => ({ name })),
-    },
-
     cls: {
       config: {
         middleware: {
@@ -307,7 +240,6 @@ const getEnv = (): EnvData => {
     database: {
       config: databaseConnection,
       skipMigrations: dto.DB_SKIP_MIGRATIONS ?? false,
-      vectorExtension,
     },
 
     helmet: {
@@ -330,7 +262,8 @@ const getEnv = (): EnvData => {
       },
     },
 
-    redis: redisConfig,
+    // Fork target: no Redis anywhere (embedded queue; socket.io in-memory adapter).
+    redis: null,
 
     resourcePaths: {
       lockFile: join(buildFolder, 'build-lock.json'),

@@ -29,7 +29,27 @@ export class ClusterGroupRepository {
   }
 
   @GenerateSql({ params: [{ clusterGroupId: DummyValue.UUID, userId: DummyValue.UUID }] })
-  createRequest(request: Insertable<ClusterGroupRequestTable>) {
+  async createRequest(request: Insertable<ClusterGroupRequestTable>) {
+    // PostgreSQL distinguishes insert vs conflict via (xmax = 0); SQLite
+    // RETURNING cannot see that, so check existence first and synthesize
+    // the same result shape.
+    const existing = await this.db
+      .selectFrom('cluster_group_request')
+      .selectAll('cluster_group_request')
+      .where('cluster_group_request.clusterGroupId', '=', request.clusterGroupId)
+      .where('cluster_group_request.userId', '=', request.userId)
+      .executeTakeFirst();
+    if (existing) {
+      return { ...existing, isInserted: false as boolean };
+    }
+    const created = await this.db
+      .insertInto('cluster_group_request')
+      .values(request)
+      .onConflict((oc) => oc.columns(['clusterGroupId', 'userId']).doNothing())
+      .returningAll()
+      .executeTakeFirst();
+    return created ? { ...created, isInserted: true as boolean } : undefined;
+
     return this.db
       .insertInto('cluster_group_request')
       .values(request)

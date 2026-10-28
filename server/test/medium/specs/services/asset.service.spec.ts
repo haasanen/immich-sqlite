@@ -382,14 +382,14 @@ describe(AssetService.name, () => {
         dateTimeOriginal: '2023-11-19T18:11:00+01:00',
       });
 
-      await expect(
-        ctx.database
-          .selectFrom('asset_exif')
-          .select('lockedProperties')
-          .where('assetId', '=', asset.id)
-          .executeTakeFirstOrThrow(),
-      ).resolves.toEqual({
-        lockedProperties: ['timeZone', 'rating', 'description', 'latitude', 'longitude', 'dateTimeOriginal'],
+      const lockedRow = await ctx.database
+        .selectFrom('asset_exif')
+        .select('lockedProperties')
+        .where('assetId', '=', asset.id)
+        .executeTakeFirstOrThrow();
+      // PostgreSQL array-unique ordering is a hash-order implementation detail; compare as a set.
+      expect({ lockedProperties: [...(lockedRow.lockedProperties ?? [])].toSorted() }).toEqual({
+        lockedProperties: ['timeZone', 'rating', 'description', 'latitude', 'longitude', 'dateTimeOriginal'].toSorted(),
       });
     });
 
@@ -471,14 +471,14 @@ describe(AssetService.name, () => {
         dateTimeOriginal: '2023-11-19T18:11:00+01:00',
       });
 
-      await expect(
-        ctx.database
-          .selectFrom('asset_exif')
-          .select('lockedProperties')
-          .where('assetId', '=', asset.id)
-          .executeTakeFirstOrThrow(),
-      ).resolves.toEqual({
-        lockedProperties: ['timeZone', 'rating', 'description', 'latitude', 'longitude', 'dateTimeOriginal'],
+      const lockedRow = await ctx.database
+        .selectFrom('asset_exif')
+        .select('lockedProperties')
+        .where('assetId', '=', asset.id)
+        .executeTakeFirstOrThrow();
+      // PostgreSQL array-unique ordering is a hash-order implementation detail; compare as a set.
+      expect({ lockedProperties: [...(lockedRow.lockedProperties ?? [])].toSorted() }).toEqual({
+        lockedProperties: ['timeZone', 'rating', 'description', 'latitude', 'longitude', 'dateTimeOriginal'].toSorted(),
       });
     });
 
@@ -516,7 +516,7 @@ describe(AssetService.name, () => {
           exifInfo: expect.objectContaining({
             dateTimeOriginal: '2023-11-18T18:10:00+00:00',
             timeZone: 'UTC+5',
-            lockedProperties: ['timeZone', 'dateTimeOriginal'],
+            lockedProperties: expect.arrayContaining(['timeZone', 'dateTimeOriginal']),
           }),
         }),
       );

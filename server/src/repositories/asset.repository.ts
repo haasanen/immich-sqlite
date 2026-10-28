@@ -6,12 +6,11 @@ import {
   type NotNull,
   type SelectQueryBuilder,
   type Selectable,
-  type ShallowDehydrateObject,
+  type SqlBool,
   UpdateResult,
   type Updateable,
   sql,
 } from 'kysely';
-import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { isEmpty, isUndefined, omitBy } from 'lodash-es';
 import { InjectKysely } from 'nestjs-kysely';
 import type { AuthDto } from 'src/dtos/auth.dto.js';
@@ -55,6 +54,8 @@ import {
   withTags,
 } from 'src/utils/database.js';
 import { globToPostgresRegex } from 'src/utils/misc.js';
+import { jsonArrayFrom, jsonObjectFrom } from 'src/utils/sql-json.js';
+import { sqliteRowObjectSql } from 'src/utils/sqlite-json-helpers.js';
 
 export type AssetStats = Record<AssetType, number>;
 
@@ -143,8 +144,16 @@ type UpsertExifOptions = {
   lockedPropertiesBehavior: 'override' | 'append' | 'skip';
 };
 
-const distinctLocked = <T extends LockableProperty[] | null>(eb: ExpressionBuilder<DB, 'asset_exif'>, columns: T) =>
-  sql<T>`nullif(array(select distinct unnest(${eb.ref('asset_exif.lockedProperties')} || ${columns})), '{}')`;
+const distinctLocked = <T extends LockableProperty[] | null>(_eb: ExpressionBuilder<DB, 'asset_exif'>, columns: T) =>
+  // arrays are stored as JSON text; union through json_each for dedup.
+  // json_group_array over zero rows is NULL, matching the '{}' -> null rule.
+  sql<T>`(case when not exists (select 1 from json_each("asset_exif"."lockedProperties")
+              union all select 1 from json_each(${columns}) limit 1)
+        then null else (select json_group_array(value) from (
+          select value, min(case when src = 0 then key else key + 100000 end) as pos
+          from (select 0 as src, key, value from json_each("asset_exif"."lockedProperties")
+                union all select 1 as src, key, value from json_each(${columns}))
+          group by value order by pos)) end)`;
 
 const getBoundingCircle = (bbox: BoundingBox) => {
   const { west, south, east, north } = bbox;
@@ -174,6 +183,49 @@ const withBoundingBox = <T>(qb: SelectQueryBuilder<DB, 'asset' | 'asset_exif', T
   );
 };
 
+const AGG_BASE_COLS = [
+  'duration',
+  'id',
+  'visibility',
+  'isFavorite',
+  'isImage',
+  'isTrashed',
+  'livePhotoVideoId',
+  'fileCreatedAt',
+  'localOffsetHours',
+  'createdAt',
+  'ownerId',
+  'projectionType',
+  'ratio',
+  'status',
+  'thumbhash',
+];
+
+const AGG_BOOL_COLS = new Set(['isFavorite', 'isImage', 'isTrashed']);
+
+const aggCols = (eb: ExpressionBuilder<any, any>, cols: string[]) =>
+  cols.map((c) =>
+    eb.fn
+      .coalesce(eb.fn('json_group_array', [AGG_BOOL_COLS.has(c) ? sql.raw(`json("${c}")`) : c]), sql.lit('[]'))
+      .as(c),
+  );
+
+const aggColumnNames = (options: TimeBucketOptions, auth: AuthDto): string[] => {
+  const cols = [...AGG_BASE_COLS];
+  if (!auth.sharedLink || auth.sharedLink.showExif) cols.push('city', 'country');
+  if (options.withCoordinates) cols.push('latitude', 'longitude');
+  if (options.withStacked) cols.push('stack');
+  return cols;
+};
+
+// SQLite equivalent of to_json(row of json-array columns): json_object with
+// each aggregated TEXT column re-parsed as JSON so it embeds as an array.
+const sqliteAggObject = (cols: string[]) =>
+  sql<string>`json_object(${sql.join(
+    cols.flatMap((c) => [sql.lit(c), sql`json(${sql.ref(`agg.${c}`)})`]),
+    sql.raw(', '),
+  )})`;
+
 @Injectable()
 export class AssetRepository {
   constructor(@InjectKysely() private db: Kysely<DB>) {}
@@ -187,10 +239,12 @@ export class AssetRepository {
     ],
   })
   async upsertExif({ exif, audio, video, keyframes, lockedPropertiesBehavior }: UpsertExifOptions): Promise<void> {
-    let query = this.db;
-    if (audio) {
-      (query as any) = this.db.with('audio', (qb) =>
-        qb
+    // SQLite has no data-modifying CTEs; the CTEs here are independent DML,
+    // so run them as sequential statements in one transaction.
+    await this.db.transaction().execute(async (trx) => {
+      const sqliteExif: Insertable<AssetExifTable> = exif;
+      if (audio) {
+        await trx
           .insertInto('asset_audio')
           .values(audio)
           .onConflict((oc) =>
@@ -200,13 +254,11 @@ export class AssetRepository {
               profile: ref('excluded.profile'),
               codecName: ref('excluded.codecName'),
             })),
-          ),
-      );
-    }
-
-    if (video) {
-      (query as any) = query.with('video', (qb) =>
-        qb
+          )
+          .execute();
+      }
+      if (video) {
+        await trx
           .insertInto('asset_video')
           .values(video)
           .onConflict((oc) =>
@@ -228,13 +280,11 @@ export class AssetRepository {
               formatLongName: ref('excluded.formatLongName'),
               pixelFormat: ref('excluded.pixelFormat'),
             })),
-          ),
-      );
-    }
-
-    if (keyframes) {
-      (query as any) = query.with('keyframe', (qb) =>
-        qb
+          )
+          .execute();
+      }
+      if (keyframes) {
+        await trx
           .insertInto('asset_keyframe')
           .values(keyframes)
           .onConflict((oc) =>
@@ -246,10 +296,18 @@ export class AssetRepository {
               packetCount: ref('excluded.packetCount'),
               outputFrames: ref('excluded.outputFrames'),
             })),
-          ),
-      );
-    }
+          )
+          .execute();
+      }
+      await this.upsertExifRow(trx, sqliteExif, lockedPropertiesBehavior);
+    });
+  }
 
+  private async upsertExifRow(
+    query: Kysely<DB>,
+    exif: Insertable<AssetExifTable>,
+    lockedPropertiesBehavior: 'override' | 'append' | 'skip',
+  ): Promise<void> {
     await query
       .insertInto('asset_exif')
       .values(exif)
@@ -259,7 +317,11 @@ export class AssetRepository {
           const skipLocked = <T extends keyof AssetExifTable>(col: T) =>
             eb
               .case()
-              .when(sql`${col}`, '=', eb.fn.any('asset_exif.lockedProperties'))
+              .when(
+                sql`exists (select 1 from json_each("asset_exif"."lockedProperties") je where je.value = ${eb.ref(`excluded.${col}`)})` as never,
+                '=',
+                eb.lit(1) as never,
+              )
               .then(eb.ref(`asset_exif.${col}`))
               .else(eb.ref(`excluded.${col}`))
               .end();
@@ -346,8 +408,8 @@ export class AssetRepository {
     return this.db
       .updateTable('asset_exif')
       .where('assetId', '=', assetId)
-      .set((eb) => ({
-        lockedProperties: sql`nullif(array(select distinct property from unnest(${eb.ref('asset_exif.lockedProperties')}) property where not property = any(${properties})), '{}')`,
+      .set(() => ({
+        lockedProperties: sql`(case when not exists (select 1 from json_each("asset_exif"."lockedProperties") where value not in (select value from json_each(${properties}))) then null else (select json_group_array(value) from (select value, key from json_each("asset_exif"."lockedProperties") where value not in (select value from json_each(${properties})) order by key)) end)`,
       }))
       .execute();
   }
@@ -458,53 +520,64 @@ export class AssetRepository {
   }
 
   @GenerateSql({ params: [DummyValue.UUID, { year: 2000, day: 1, month: 1 }] })
-  getByDayOfYear(ownerIds: string[], { year, day, month }: YearMonthDay) {
+  getByDayOfYear(
+    ownerIds: string[],
+    { year, day, month }: YearMonthDay,
+  ): Promise<{ year: number; assets: { id: string; localDateTime: string }[] }[]> {
+    // SQLite port: recursive year series instead of generate_series/make_date,
+    // row_number() window instead of lateral limit(20), json_group_array row
+    // objects instead of json_agg("res").
     return this.db
+      .withRecursive(
+        'years',
+        sql`(select cast(strftime('%Y', min(substr("localDateTime", 1, 10))) as integer) as y from asset
+             union all
+             select y + 1 from years where y + 1 <= ${year - 1})` as any,
+      )
       .with('res', (qb) =>
         qb
-          .with('today', (qb) =>
-            qb
-              .selectFrom((eb) =>
-                eb
-                  .fn('generate_series', [
-                    sql`(select date_part('year', min(("localDateTime" at time zone 'UTC')::date))::int from asset)`,
-                    sql`${year - 1}`,
-                  ])
-                  .as('year'),
-              )
-              .select((eb) => eb.fn('make_date', [sql`year::int`, sql`${month}::int`, sql`${day}::int`]).as('date')),
-          )
-          .selectFrom('today')
-          .innerJoinLateral(
-            (qb) =>
-              qb
+          .selectFrom('years')
+          .innerJoin(
+            (eb) =>
+              eb
                 .selectFrom('asset')
-                .select(['asset.id', 'asset.localDateTime'])
                 .innerJoin('asset_job_status', 'asset.id', 'asset_job_status.assetId')
-                .where(sql`(asset."localDateTime" at time zone 'UTC')::date`, '=', sql`today.date`)
-                .where('asset.ownerId', '=', anyUuid(ownerIds))
+                .select(['asset.id', 'asset.localDateTime'])
+                .select(
+                  sql<number>`row_number() over (partition by substr(asset."localDateTime", 1, 10) order by asset."localDateTime" desc)`.as(
+                    'rn',
+                  ),
+                )
+                .where(
+                  sql<SqlBool>`substr(asset."localDateTime", 1, 10) in (select date from (select printf('%04d-%02d-%02d', y, ${month}, ${day}) as date from years))`,
+                )
+                .where(sql<SqlBool>`asset."ownerId" in (select value from json_each(pg_array_json(${ownerIds})))`)
                 .where('asset.visibility', '=', AssetVisibility.Timeline)
-                .where((eb) =>
-                  eb.exists((qb) =>
-                    qb
+                .where((eb2) =>
+                  eb2.exists((qb2) =>
+                    qb2
                       .selectFrom('asset_file')
                       .whereRef('assetId', '=', 'asset.id')
                       .where('asset_file.type', '=', AssetFileType.Preview),
                   ),
                 )
                 .where('asset.deletedAt', 'is', null)
-                .orderBy(sql`(asset."localDateTime" at time zone 'UTC')::date`, 'desc')
-                .limit(20)
                 .as('a'),
             (join) => join.onTrue(),
           )
-          .selectAll('a'),
+          .select(['a.id', 'a.localDateTime'])
+          .where('a.rn', '<=', 20),
       )
       .selectFrom('res')
-      .select(sql<number>`date_part('year', ("localDateTime" at time zone 'UTC')::date)::int`.as('year'))
-      .select((eb) => eb.fn.jsonAgg(eb.table('res')).as('assets'))
-      .groupBy(sql`("localDateTime" at time zone 'UTC')::date`)
-      .orderBy(sql`("localDateTime" at time zone 'UTC')::date`, 'desc')
+      .select(sql<number>`cast(strftime('%Y', substr("localDateTime", 1, 10)) as integer)`.as('year'))
+      .select(
+        sql<unknown>`json_group_array(json_object('id', jval(res."id"), 'localDateTime', jval(res."localDateTime")))`.as(
+          'assets',
+        ),
+      )
+      .groupBy(sql`substr("localDateTime", 1, 10)`)
+      .orderBy(sql`substr("localDateTime", 1, 10)`, 'desc')
+      .$castTo<{ year: number; assets: { id: string; localDateTime: string }[] }>()
       .execute();
   }
 
@@ -589,31 +662,29 @@ export class AssetRepository {
       .$if(!!smartSearch, withSmartSearch)
       .$if(!!stack, (qb) =>
         qb
-          .leftJoin('stack', 'stack.id', 'asset.stackId')
-          .$if(!stack!.assets, (qb) =>
-            qb.select((eb) => eb.fn.toJson(eb.table('stack')).$castTo<Stack | null>().as('stack')),
+          .$if(!stack!.assets, (qb2) =>
+            qb2.select((eb) =>
+              jsonObjectFrom(eb.selectFrom('stack').selectAll('stack').whereRef('stack.id', '=', 'asset.stackId'))
+                .$castTo<Stack | null>()
+                .as('stack'),
+            ),
           )
-          .$if(!!stack!.assets, (qb) =>
-            qb
-              .leftJoinLateral(
-                (eb) =>
-                  eb
-                    .selectFrom('asset as stacked')
-                    .selectAll('stack')
-                    .select(
-                      sql<
-                        ShallowDehydrateObject<Selectable<AssetTable>>[]
-                      >`array_agg(to_json(stacked) ORDER BY stacked."fileCreatedAt" ASC)`.as('assets'),
-                    )
-                    .whereRef('stacked.stackId', '=', 'stack.id')
-                    .whereRef('stacked.id', '!=', 'stack.primaryAssetId')
-                    .where('stacked.deletedAt', 'is', null)
-                    .where('stacked.visibility', '=', AssetVisibility.Timeline)
-                    .groupBy('stack.id')
-                    .as('stacked_assets'),
-                (join) => join.on('stack.id', 'is not', null),
+          .$if(!!stack!.assets, (qb2) =>
+            qb2.select((eb) =>
+              jsonObjectFrom(
+                eb
+                  .selectFrom('stack')
+                  .selectAll('stack')
+                  .select(() =>
+                    sql`(select json_group_array(${sqliteRowObjectSql('stacked', 'id', 'asset')}) from "asset" as "stacked" where "stacked"."stackId" = "stack"."id" and "stacked"."id" != "stack"."primaryAssetId" and "stacked"."deletedAt" is null and "stacked"."visibility" = ${AssetVisibility.Timeline} order by "stacked"."fileCreatedAt" asc)`.as(
+                      'assets',
+                    ),
+                  )
+                  .whereRef('stack.id', '=', 'asset.stackId'),
               )
-              .select((eb) => eb.fn.toJson(eb.table('stacked_assets')).as('stack')),
+                .$castTo<Stack | null>()
+                .as('stack'),
+            ),
           ),
       )
       .$if(!!files, (qb) => qb.select(withFiles))
@@ -640,14 +711,17 @@ export class AssetRepository {
     const value = omitBy(asset, isUndefined);
     delete value.id;
     if (!isEmpty(value)) {
-      return this.db
-        .with('asset', (qb) => qb.updateTable('asset').set(asset).where('id', '=', asUuid(asset.id)).returningAll())
-        .selectFrom('asset')
-        .selectAll('asset')
-        .$call(withExif)
-        .$call((qb) => qb.select(withFaces))
-        .$call((qb) => qb.select(withEdits))
-        .executeTakeFirst();
+      return this.db.transaction().execute(async (tx) => {
+        await tx.updateTable('asset').set(asset).where('id', '=', asUuid(asset.id)).executeTakeFirst();
+        return tx
+          .selectFrom('asset')
+          .selectAll('asset')
+          .$call(withExif)
+          .$call((qb) => qb.select(withFaces))
+          .$call((qb) => qb.select(withEdits))
+          .where('asset.id', '=', asUuid(asset.id))
+          .executeTakeFirst();
+      });
     }
 
     return this.getById(asset.id, { exifInfo: true, faces: {}, edits: true });
@@ -812,7 +886,7 @@ export class AssetRepository {
   @GenerateSql({
     params: [DummyValue.TIME_BUCKET, { withStacked: true }, { user: { id: DummyValue.UUID } }],
   })
-  getTimeBucket(timeBucket: string, options: TimeBucketOptions, auth: AuthDto) {
+  async getTimeBucket(timeBucket: string, options: TimeBucketOptions, auth: AuthDto) {
     const order = options.order ?? 'desc';
     const query = this.db
       .with('cte', (qb) =>
@@ -823,9 +897,16 @@ export class AssetRepository {
             'asset.duration',
             'asset.id',
             'asset.visibility',
-            sql`asset."isFavorite" and asset."ownerId" = ${auth.user.id}`.as('isFavorite'),
-            sql`asset.type = 'IMAGE'`.as('isImage'),
-            sql`asset."deletedAt" is not null`.as('isTrashed'),
+            ...(
+              [
+                [
+                  sql`json(case when asset."isFavorite" and asset."ownerId" = ${auth.user.id} then 'true' else 'false' end)`,
+                  'isFavorite',
+                ],
+                [sql`json(case when asset.type = 'IMAGE' then 'true' else 'false' end)`, 'isImage'],
+                [sql`json(case when asset."deletedAt" is not null then 'true' else 'false' end)`, 'isTrashed'],
+              ] as const
+            ).map(([e, a]) => e.as(a)),
             'asset.livePhotoVideoId',
             sql`extract(epoch from (asset."localDateTime" AT TIME ZONE 'UTC' - asset."fileCreatedAt" at time zone 'UTC'))::real / 3600`.as(
               'localOffsetHours',
@@ -867,7 +948,13 @@ export class AssetRepository {
 
             return withBoundingBox(withBoundingCircle, bbox);
           })
-          .where(truncatedDate(options.orderBy), '=', timeBucket.replace(/^[+-]/, ''))
+          .where(
+            truncatedDate(options.orderBy),
+            '=',
+            // SQLite buckets are plain YYYY-MM-DD strings, so clamp to the date part;
+            // Postgres casts the full bucket (including 5-digit year forms) to timestamptz.
+            timeBucket.replace(/^[+-]/, '').slice(0, 10),
+          )
           .$if(!!options.albumId, (qb) =>
             qb.where((eb) =>
               eb.exists(
@@ -930,44 +1017,22 @@ export class AssetRepository {
       .with('agg', (qb) =>
         qb
           .selectFrom('cte')
-          .select((eb) => [
-            eb.fn.coalesce(eb.fn('array_agg', ['duration']), sql.lit('{}')).as('duration'),
-            eb.fn.coalesce(eb.fn('array_agg', ['id']), sql.lit('{}')).as('id'),
-            eb.fn.coalesce(eb.fn('array_agg', ['visibility']), sql.lit('{}')).as('visibility'),
-            eb.fn.coalesce(eb.fn('array_agg', ['isFavorite']), sql.lit('{}')).as('isFavorite'),
-            eb.fn.coalesce(eb.fn('array_agg', ['isImage']), sql.lit('{}')).as('isImage'),
-            // TODO: isTrashed is redundant as it will always be all true or false depending on the options
-            eb.fn.coalesce(eb.fn('array_agg', ['isTrashed']), sql.lit('{}')).as('isTrashed'),
-            eb.fn.coalesce(eb.fn('array_agg', ['livePhotoVideoId']), sql.lit('{}')).as('livePhotoVideoId'),
-            eb.fn.coalesce(eb.fn('array_agg', ['fileCreatedAt']), sql.lit('{}')).as('fileCreatedAt'),
-            eb.fn.coalesce(eb.fn('array_agg', ['localOffsetHours']), sql.lit('{}')).as('localOffsetHours'),
-            eb.fn.coalesce(eb.fn('array_agg', ['createdAt']), sql.lit('{}')).as('createdAt'),
-            eb.fn.coalesce(eb.fn('array_agg', ['ownerId']), sql.lit('{}')).as('ownerId'),
-            eb.fn.coalesce(eb.fn('array_agg', ['projectionType']), sql.lit('{}')).as('projectionType'),
-            eb.fn.coalesce(eb.fn('array_agg', ['ratio']), sql.lit('{}')).as('ratio'),
-            eb.fn.coalesce(eb.fn('array_agg', ['status']), sql.lit('{}')).as('status'),
-            eb.fn.coalesce(eb.fn('array_agg', ['thumbhash']), sql.lit('{}')).as('thumbhash'),
-          ])
+          .select((eb) => aggCols(eb, AGG_BASE_COLS))
           .$if(!auth.sharedLink || auth.sharedLink.showExif, (qb) =>
-            qb.select((eb) => [
-              eb.fn.coalesce(eb.fn('array_agg', ['city']), sql.lit('{}')).as('city'),
-              eb.fn.coalesce(eb.fn('array_agg', ['country']), sql.lit('{}')).as('country'),
-            ]),
+            qb.select((eb) => aggCols(eb, ['city', 'country'])),
           )
-          .$if(!!options.withCoordinates, (qb) =>
-            qb.select((eb) => [
-              eb.fn.coalesce(eb.fn('array_agg', ['latitude']), sql.lit('{}')).as('latitude'),
-              eb.fn.coalesce(eb.fn('array_agg', ['longitude']), sql.lit('{}')).as('longitude'),
-            ]),
-          )
+          .$if(!!options.withCoordinates, (qb) => qb.select((eb) => aggCols(eb, ['latitude', 'longitude'])))
           .$if(!!options.withStacked, (qb) =>
-            qb.select((eb) => eb.fn.coalesce(eb.fn('json_agg', ['stack']), sql.lit('[]')).as('stack')),
+            qb.select((eb) => eb.fn.coalesce(eb.fn('json_group_array', ['stack']), sql.lit('[]')).as('stack')),
           ),
       )
       .selectFrom('agg')
-      .select(sql<string>`to_json(agg)::text`.as('assets'));
+      .select(sqliteAggObject(aggColumnNames(options, auth)).as('assets'));
 
-    return query.executeTakeFirstOrThrow();
+    const row = await query.executeTakeFirstOrThrow();
+    // the PG variant handed back to_json(agg)::text as a raw string; SQLite's
+    // json parse plugin already produced the object, so re-stringify it
+    return { ...row, assets: JSON.stringify(row.assets) };
   }
 
   @GenerateSql({ params: [DummyValue.UUID, { minAssetsPerField: 5, maxFields: 12 }] })
