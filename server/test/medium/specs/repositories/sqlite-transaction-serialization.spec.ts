@@ -8,7 +8,7 @@ import { getKyselyDB } from 'test/utils.js';
  * nesting with LIFO savepoints. If two top-level db.transaction() calls
  * interleave, commit/rollback release the WRONG savepoint and one flow's writes
  * silently vanish (observed as a freshly-created session row disappearing ->
- * "Invalid user token"). serializeTransactions() must keep top-level
+ * "Invalid user token"). createSqliteKysely() must keep top-level
  * transactions mutually exclusive while a transaction re-entered from inside
  * another transaction's callback runs as a savepoint (no deadlock, isolated
  * rollback).

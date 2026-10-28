@@ -69,26 +69,87 @@ const logQueryFailure = (event: LogEvent) => {
   });
 };
 
-export const getKyselyConfig = (connection: SqliteConnectionParams): KyselyConfig => {
+/**
+ * FIFO handoff lock over the single synchronous better-sqlite3 handle. Kysely
+ * reports supportsMultipleConnections=true so its own mutex stays off (it is
+ * held across stream yields and deadlocks immich's for-await stream loops),
+ * but that also lets writes from unrelated flows piggyback onto an open BEGIN
+ * on the shared handle: when that transaction rolls back, the piggybacked
+ * writes silently vanish (h4-h7 CI "Invalid user token" session deaths: signup's
+ * session row joined a boot/queue job's transaction and was rolled back with it).
+ * The adapter lock makes every plain statement wait while a transaction is
+ * active; the transaction holder itself passes through via AsyncLocalStorage,
+ * so its own statements (and intentional nested savepoints) never self-block.
+ * NEVER remove: the proxy, this lock, and createSqliteKysely belong together.
+ */
+class HandleLock {
+  private locked = false;
+  private waiters: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+    // lock is handed directly to the resolver; no race window
+  }
+
+  release(): void {
+    const next = this.waiters.shift();
+    if (next) {
+      next();
+    } else {
+      this.locked = false;
+    }
+  }
+}
+
+interface HandleState {
+  lock: HandleLock;
+  txCtx: AsyncLocalStorage<{ holder: true }>;
+}
+
+export const getKyselyConfig = (connection: SqliteConnectionParams, state?: HandleState): KyselyConfig => {
   if (connection.connectionType === 'sqlite') {
     const handle = createSqliteHandle(connection.filename);
     const base = new SqliteDialect({ database: handle as never });
-    // FORK: all sqlite "connections" are the same better-sqlite3 handle and every
-    // statement executes synchronously, so interleaved plain queries are safe.
-    // Kysely's connection mutex (supportsMultipleConnections=false) must STAY off:
-    // stream() holds the mutex across yields and immich runs queries inside
-    // for-await loop bodies -> guaranteed deadlock (integrity/sync flows).
-    // Transaction safety is instead enforced explicitly by serializeTransactions()
-    // (see below): with the mutex off, two concurrent db.transaction() calls
-    // interleave begin/commit on the one handle and corrupt the shim's LIFO
-    // savepoint emulation, silently discarding another flow's writes (root cause
-    // of the h4/h6 CI "Invalid user token" session deaths). NEVER remove this
-    // proxy without solving streams differently; NEVER remove serializeTransactions.
+    const handleState: HandleState = state ?? { lock: new HandleLock(), txCtx: new AsyncLocalStorage() };
     const dialect = {
-      createAdapter: () =>
-        new Proxy(base.createAdapter(), {
-          get: (target, prop) => (prop === 'supportsMultipleConnections' ? true : Reflect.get(target, prop)),
-        }),
+      createAdapter: () => {
+        // structural view of SqliteDialect's adapter (its public DialectAdapter
+        // type hides executeQuery/streamQuery, which we must intercept)
+        type Executable = Record<'supportsMultipleConnections' | 'executeQuery' | 'streamQuery', unknown>;
+        const adapter = base.createAdapter() as unknown as Executable;
+        const lockPassthrough = (name: 'executeQuery' | 'streamQuery') => {
+          const fn = adapter[name] as (connection: unknown, query: unknown) => Promise<unknown>;
+          return async (connectionArg: unknown, queryArg: unknown) => {
+            if (handleState.txCtx.getStore()) {
+              // running inside the transaction holder's async context
+              return await fn(connectionArg, queryArg);
+            }
+            await handleState.lock.acquire();
+            try {
+              return await fn(connectionArg, queryArg);
+            } finally {
+              handleState.lock.release();
+            }
+          };
+        };
+        return new Proxy(adapter, {
+          get: (target, prop) => {
+            if (prop === 'supportsMultipleConnections') {
+              return true;
+            }
+            if (prop === 'executeQuery' || prop === 'streamQuery') {
+              return lockPassthrough(prop);
+            }
+            return Reflect.get(target, prop);
+          },
+        });
+      },
       createDriver: () => base.createDriver(),
       createQueryCompiler: () => base.createQueryCompiler(),
       createIntrospector: (db: never) => base.createIntrospector(db),
@@ -103,32 +164,32 @@ export const getKyselyConfig = (connection: SqliteConnectionParams): KyselyConfi
 };
 
 /**
- * Serialize top-level transaction() calls on a Kysely instance bound to one
- * synchronous SQLite handle. Transactions never overlap (FIFO); a transaction
- * nested within the same async context (trx.transaction(), or a repository
- * method called from inside a callback) runs on the holder's savepoint instead
- * of re-acquiring the queue. Plain queries and streams keep full interleaving.
+ * Build the production/test Kysely client for the SQLite fork. The adapter lock
+ * (getKyselyConfig) plus this transaction wrapper form one mechanism: top-level
+ * transaction() calls hold the handle exclusively across the whole callback
+ * (no other flow's write can piggyback onto their BEGIN and be lost in a
+ * rollback), while a transaction re-entered inside the holder's async context
+ * passes through the lock and becomes a savepoint via the shim. Plain queries
+ * and streams are synchronous single statements: they acquire the lock only for
+ * their own duration, so throughput is unchanged outside transaction windows.
  */
-export const serializeTransactions = <DB>(db: Kysely<DB>): Kysely<DB> => {
-  const txHolder = new AsyncLocalStorage<{ active: true }>();
-  let queue: Promise<void> = Promise.resolve();
+export const createSqliteKysely = <DB>(connection: SqliteConnectionParams): Kysely<DB> => {
+  const state: HandleState = { lock: new HandleLock(), txCtx: new AsyncLocalStorage() };
+  const db = new Kysely<DB>(getKyselyConfig(connection, state));
 
   const transaction = () => {
     const builder = db.transaction();
     return {
       execute: <T>(callback: (trx: Transaction<DB>) => Promise<T>): Promise<T> => {
-        if (txHolder.getStore()) {
+        if (state.txCtx.getStore()) {
           return builder.execute(callback);
         }
-        const previous = queue;
-        const { promise, resolve } = Promise.withResolvers<void>();
-        queue = promise;
-        return previous.then(() =>
-          txHolder.run({ active: true }, async () => {
+        return state.lock.acquire().then(() =>
+          state.txCtx.run({ holder: true }, async () => {
             try {
               return await builder.execute(callback);
             } finally {
-              resolve();
+              state.lock.release();
             }
           }),
         );

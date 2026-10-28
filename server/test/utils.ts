@@ -78,7 +78,7 @@ import { WorkflowRepository } from 'src/repositories/workflow.repository.js';
 import { DB } from 'src/schema/index.js';
 import { AuthService } from 'src/services/auth.service.js';
 import { BaseService } from 'src/services/base.service.js';
-import { getKyselyConfig, serializeTransactions } from 'src/utils/database.js';
+import { createSqliteKysely } from 'src/utils/database.js';
 import { bootstrapSqliteSchema } from 'src/utils/sqlite-database.js';
 import { ClusterGroupFactory } from 'test/factories/cluster-group.factory.js';
 import { IAccessRepositoryMock, newAccessRepositoryMock } from 'test/repositories/access.repository.mock.js';
@@ -484,7 +484,7 @@ const pngFactory = newPngFactory();
 export const getKyselyDB = async (suffix?: string): Promise<Kysely<DB>> => {
   const suffixId = suffix ?? Math.random().toString(36).slice(2, 7);
   const filename = `${tmpdir()}/immich_test_${suffixId}_${process.pid}_${Date.now()}.db`;
-  const db = serializeTransactions(new Kysely<DB>(getKyselyConfig({ connectionType: 'sqlite', filename })));
+  const db = createSqliteKysely<DB>({ connectionType: 'sqlite', filename });
   await bootstrapSqliteSchema(db);
   return db;
 };

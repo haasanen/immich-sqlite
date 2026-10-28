@@ -394,6 +394,12 @@ export const createSqliteHandle = (filename: string): ImmichSqliteHandle => {
           break;
         }
         case 'rollback': {
+          // diagnostics (h8): any ROLLBACK discards every plain statement that
+          // joined this BEGIN from other flows (single shared handle) — capture
+          // the culprit stack before it does.
+          console.warn(
+            `[sqltrace] ROLLBACK depth=${txDepth} at=${(new Error('sqltrace').stack ?? '').split('\n').slice(2, 9).join(' | ')}`,
+          );
           if (txDepth > 1) {
             rewritten = `rollback to sp${spSeq--}`;
           }

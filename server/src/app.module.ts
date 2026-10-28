@@ -1,7 +1,6 @@
 import { DynamicModule, Inject, Module, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
-import { Kysely } from 'kysely';
 import { ClsModule } from 'nestjs-cls';
 import { OpenTelemetryModule } from 'nestjs-otel';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
@@ -38,7 +37,7 @@ import { CliService } from 'src/services/cli.service.js';
 import { DatabaseBackupService } from 'src/services/database-backup.service.js';
 import { services } from 'src/services/index.js';
 import { QueueService } from 'src/services/queue.service.js';
-import { getKyselyConfig, serializeTransactions } from 'src/utils/database.js';
+import { createSqliteKysely } from 'src/utils/database.js';
 import { configureUserAgent } from 'src/utils/fetch.js';
 
 const common = [...repositories, ...services, GlobalExceptionFilter];
@@ -57,13 +56,12 @@ const configRepository = new ConfigRepository();
 const { cls, database, otel } = configRepository.getEnv();
 
 // FORK: replaces nestjs-kysely KyselyModule.forRoot with the identical global
-// provider (token 'KyselyModuleConnectionToken'), but the client is wrapped in
-// serializeTransactions(): one synchronous SQLite handle means top-level
-// transactions must never overlap (interleaved begin/commit corrupts the shim's
-// savepoint emulation and silently loses writes), while plain queries and
-// streams deliberately stay interleaved.
+// provider (token 'KyselyModuleConnectionToken'), but the client is built by
+// createSqliteKysely(): one synchronous SQLite handle requires an adapter-level
+// lock so a flow's plain write can never piggyback onto another transaction's
+// open BEGIN and be lost when it rolls back (CI session-death class of bugs).
 class KyselyClientHolder implements OnApplicationShutdown {
-  client = serializeTransactions(new Kysely<DB>(getKyselyConfig(database.config)));
+  client = createSqliteKysely<DB>(database.config);
 
   async onApplicationShutdown(): Promise<void> {
     await this.client.destroy();

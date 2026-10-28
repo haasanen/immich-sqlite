@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Insertable, Kysely, Updateable } from 'kysely';
@@ -11,9 +11,24 @@ import { jsonObjectFrom } from 'src/utils/sql-json.js';
 
 @Injectable()
 export class SessionRepository {
+  private logger = new Logger(SessionRepository.name);
+
   constructor(@InjectKysely() private db: Kysely<DB>) {}
 
+  // diagnostics (h8): boot-time session disappearance forensics
+  async debugState() {
+    const rows = await this.db.selectFrom('session').select(['id', 'createdAt', 'expiresAt', 'userId']).execute();
+    return { count: rows.length, rows };
+  }
+
+  private traceDelete(op: string) {
+    this.logger.warn(
+      `[sessiontrace] ${op} called at=${(new Error('sessiontrace').stack ?? '').split('\n').slice(2, 8).join(' | ')}`,
+    );
+  }
+
   cleanup() {
+    this.traceDelete('cleanup');
     return this.db
       .deleteFrom('session')
       .where((eb) =>
@@ -96,11 +111,13 @@ export class SessionRepository {
 
   @GenerateSql({ params: [DummyValue.UUID] })
   async delete(id: string) {
+    this.traceDelete('delete');
     await this.db.deleteFrom('session').where('id', '=', asUuid(id)).execute();
   }
 
   @GenerateSql({ params: [{ userId: DummyValue.UUID, excludeId: DummyValue.UUID }] })
   async invalidateAll({ userId, excludeId }: { userId: string; excludeId?: string }) {
+    this.traceDelete('invalidateAll');
     await this.db
       .deleteFrom('session')
       .where('userId', '=', userId)
@@ -110,6 +127,7 @@ export class SessionRepository {
 
   @GenerateSql({ params: [DummyValue.STRING, DummyValue.STRING] })
   async invalidateOAuth({ oauthSid, oauthId }: { oauthSid?: string; oauthId?: string }): Promise<string[]> {
+    this.traceDelete('invalidateOAuth');
     let query = this.db.deleteFrom('session').returning('session.id');
 
     if (oauthSid && oauthId) {

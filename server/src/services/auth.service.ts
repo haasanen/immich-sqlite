@@ -588,8 +588,12 @@ export class AuthService extends BaseService {
       };
     }
 
+    const state = await this.sessionRepository.debugState();
     this.logger.warn(
-      `Session token rejected: no session/user match for token hash ${hashed.toString('hex').slice(0, 12)}…`,
+      `Session token rejected: no session/user match for token hash ${hashed.toString('hex').slice(0, 12)}…; ` +
+        `session table count=${state.count} rows=${JSON.stringify(
+          state.rows.map((r) => ({ id: r.id.slice(0, 8), created: r.createdAt, expires: r.expiresAt })),
+        )}`,
     );
     throw new UnauthorizedException('Invalid user token');
   }
