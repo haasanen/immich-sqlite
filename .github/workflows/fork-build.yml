@@ -95,6 +95,15 @@ jobs:
           docker exec immich-smoke test -f /data/immich-queue.db && echo "queue DB on /data volume: OK"
           docker rm -f immich-smoke
           docker volume rm smoke-data
+      - name: Smoke script hygiene guard
+        run: |
+          # guards against a real failure class: a masked secret placeholder
+          # (literal Bearer-space-asteriskasteriskasterisk) written into this file by
+          # an editing tool. Bracketed regex; any literal masked header fails CI here.
+          if grep -qE 'Bearer [*][*][*]' .github/workflows/fork-build.yml; then
+            echo "literal masked secret found in workflow smoke headers"; exit 1
+          fi
+          echo "workflow smoke headers clean: OK"
       - name: External library ingestion smoke
         run: |
           # the product's core loop as a CI gate: files enter ONLY via a read-only
@@ -151,8 +160,8 @@ jobs:
           # session (auth race) from an endpoint bug; docker logs on failure seals it.
           LOC=''
           for i in $(seq 1 60); do
-            ME=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:2283/api/users/me -H "Authorization: Bearer ***")
-            LOC=$(curl -s -H "Authorization: Bearer ***" "http://localhost:2283/api/map/reverse-geocode?lat=51.5085&lon=-0.1257" || true)
+            ME=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:2283/api/users/me -H "Authorization: Bearer ${TOK}")
+            LOC=$(curl -s -H "Authorization: Bearer ${TOK}" "http://localhost:2283/api/map/reverse-geocode?lat=51.5085&lon=-0.1257" || true)
             case "$LOC" in *'"city":"London"'*) break ;; esac
             if [ $((i % 15)) -eq 1 ]; then echo "poll $i: users/me=$ME loc_len=${#LOC} cnt=$CNT"; fi
             sleep 2
