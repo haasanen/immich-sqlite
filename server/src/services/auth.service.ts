@@ -591,6 +591,7 @@ export class AuthService extends BaseService {
     const state = await this.sessionRepository.debugState(hashed);
     this.logger.warn(
       `Session token rejected: presented hash=${hashed.toString('hex').slice(0, 12)}… ` +
+        `presented len=${token.length} head=${JSON.stringify(token.slice(0, 10))} tail=${JSON.stringify(token.slice(-6))} ` +
         `tokenMatches=${state.tokenMatches} matchedUserId=${state.matchedUserId} ` +
         `userRow=${JSON.stringify(state.userRow)} userCount=${state.userCount} ` +
         `sessionCount=${state.count} sessions=${JSON.stringify(
@@ -636,8 +637,11 @@ export class AuthService extends BaseService {
     const token = this.cryptoRepository.randomBytesAsText(32);
     const hashed = this.cryptoRepository.hashSha256(token);
 
-    // diagnostics (h9): correlate issued session hash with rejection dumps
-    this.logger.log(`Session issued: hash=${hashed.toString('hex').slice(0, 12)}… userId=${user.id}`);
+    // diagnostics (h9/h10): correlate issued session hash with rejection dumps
+    this.logger.log(
+      `Session issued: hash=${hashed.toString('hex').slice(0, 12)}… userId=${user.id} ` +
+        `issued len=${token.length} head=${JSON.stringify(token.slice(0, 10))} tail=${JSON.stringify(token.slice(-6))}`,
+    );
 
     await this.sessionRepository.create({
       token: hashed,
