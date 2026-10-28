@@ -19,7 +19,10 @@ describe('SharedLinkFormFields component', () => {
     const user = userEvent.setup();
 
     const switches = Array.from(container.querySelectorAll('[role="switch"], input[type="checkbox"]'));
-    expect(switches).toHaveLength(3);
+    // Fork invariant (BROWSE_ONLY): the "allow public user to upload" switch is
+    // never offered — uploads do not exist in this product. Only metadata and
+    // download switches remain.
+    expect(switches).toHaveLength(2);
 
     const [showMetadataSwitch, allowDownloadSwitch] = switches;
     expect(isChecked(allowDownloadSwitch)).toBe(true);

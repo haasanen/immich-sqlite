@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { jsonArrayFrom } from 'kysely/helpers/postgres';
+import { sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
 import type { ExpressionBuilder, Insertable, Kysely, Updateable } from 'kysely';
 import { columns } from 'src/database.js';
@@ -7,6 +7,8 @@ import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { DB } from 'src/schema/index.js';
 import { StackTable } from 'src/schema/tables/stack.table.js';
 import { asUuid, withDefaultVisibility } from 'src/utils/database.js';
+import { jsonArrayFrom } from 'src/utils/sql-json.js';
+import { sqliteRowObjectSql } from 'src/utils/sqlite-json-helpers.js';
 
 export interface StackSearch {
   ownerId: string;
@@ -14,6 +16,16 @@ export interface StackSearch {
 }
 
 const withAssets = (eb: ExpressionBuilder<DB, 'stack'>, withTags = false) => {
+  const exifCols = columns.exif
+    .map((c) => `'${c.split('.').at(-1)}', "asset_exif"."${c.split('.').at(-1)}"`)
+    .join(', ');
+  const tagCols = columns.tag.map((c) => `'${c.split('.').at(-1)}', "tag"."${c.split('.').at(-1)}"`).join(', ');
+  const tagsSql = withTags
+    ? `, '$.tags', (select json_group_array(json_object(${tagCols})) from "tag" inner join "tag_asset" on "tag"."id" = "tag_asset"."tagId" where "tag_asset"."assetId" = "asset"."id")`
+    : '';
+  const rowObjSql = sqliteRowObjectSql('asset', 'id');
+  const expr = `(select json_group_array(json_set(${rowObjSql}, '$.exifInfo', (select json_object(${exifCols}) from "asset_exif" where "asset_exif"."assetId" = "asset"."id")${tagsSql})) from "asset" where "asset"."deletedAt" is null and "asset"."stackId" = "stack"."id" and "asset"."visibility" in ('archive', 'timeline') order by "asset"."fileCreatedAt" asc)`;
+  return sql.raw(expr).$castTo<any>().as('assets') as never;
   return jsonArrayFrom(
     eb
       .selectFrom('asset')

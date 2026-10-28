@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { BROWSE_ONLY } from '$lib/fork';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
   import type { OnAction, PreAction } from '$lib/components/asset-viewer/actions/action';
   import ArchiveAction from '$lib/components/asset-viewer/actions/ArchiveAction.svelte';
@@ -135,7 +136,7 @@
         <ActionMenuItem action={Actions.AddToAlbum} />
         <ActionMenuItem action={Actions.RemoveFromAlbum} />
 
-        <ActionMenuItem action={StackActions.AddUploads} />
+        {#if !BROWSE_ONLY}<ActionMenuItem action={StackActions.AddUploads} />{/if}
         <ActionMenuItem action={StackActions.Unstack} />
         <ActionMenuItem action={StackActions.KeepThisDeleteOthers} />
         <ActionMenuItem action={StackActions.SetPrimaryAsset} />

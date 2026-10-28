@@ -4,10 +4,10 @@ import {
   type Insertable,
   type Kysely,
   type OrderByDirection,
+  type SqlBool,
   type Updateable,
   sql,
 } from 'kysely';
-import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { DateTime } from 'luxon';
 import { InjectKysely } from 'nestjs-kysely';
 import type { IBulkAsset } from 'src/types.js';
@@ -18,6 +18,7 @@ import { type YearMonthDay } from 'src/repositories/asset.repository.js';
 import { DB } from 'src/schema/index.js';
 import { MemoryTable } from 'src/schema/tables/memory.table.js';
 import { asLocalTime } from 'src/utils/date.js';
+import { jsonArrayFrom } from 'src/utils/sql-json.js';
 
 const asMakeDate = (eb: ExpressionBuilder<DB, 'asset'>, { year, month, day }: YearMonthDay) =>
   eb.fn('make_date', [sql`${year}::int`, sql`${month}::int`, sql`${day}::int`]);
@@ -27,11 +28,12 @@ export class MemoryRepository implements IBulkAsset {
   constructor(@InjectKysely() private db: Kysely<DB>) {}
 
   async cleanup() {
+    // SQLite has no DELETE ... USING; express the join as an IN subquery.
     await this.db
       .deleteFrom('memory_asset')
-      .using('asset')
-      .whereRef('memory_asset.assetId', '=', 'asset.id')
-      .where('asset.visibility', '!=', AssetVisibility.Timeline)
+      .where(
+        sql<SqlBool>`"memory_asset"."assetId" in (select "id" from "asset" where "visibility" != ${AssetVisibility.Timeline})`,
+      )
       .execute();
 
     return this.db

@@ -247,7 +247,12 @@ describe(MemoryService.name, () => {
       await expect(sut.create(auth, dto)).resolves.toEqual(
         expect.objectContaining({
           id: expect.any(String),
-          assets: [expect.objectContaining({ id: asset1.id }), expect.objectContaining({ id: asset2.id })],
+          // memory assets are a set; engine scan order is unspecified (PG
+          // json_agg order was an artifact), so match without positional deps
+          assets: expect.arrayContaining([
+            expect.objectContaining({ id: asset1.id }),
+            expect.objectContaining({ id: asset2.id }),
+          ]),
         }),
       );
     });

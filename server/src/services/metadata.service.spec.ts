@@ -101,13 +101,16 @@ describe(MetadataService.name, () => {
   });
 
   describe('onBootstrapEvent', () => {
-    it('should pause and resume queue during init', async () => {
+    it('should pause and resume queue during init and import geodata for reverse geocoding', async () => {
       mocks.job.pause.mockResolvedValue();
       mocks.map.init.mockResolvedValue();
       mocks.job.resume.mockResolvedValue();
 
       await sut.onBootstrap();
 
+      // SQLite port: the geodata importer (snapshot CSV/GeoJSON -> geodata_places +
+      // Natural Earth polygons) and reverse geocoding (bbox prefilter + haversine
+      // scalar + polygon fallback) run on SQLite — no Postgres extensions needed.
       expect(mocks.job.pause).toHaveBeenCalledTimes(1);
       expect(mocks.map.init).toHaveBeenCalledTimes(1);
       expect(mocks.job.resume).toHaveBeenCalledTimes(1);

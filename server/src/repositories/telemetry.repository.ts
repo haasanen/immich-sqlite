@@ -4,9 +4,7 @@ import { MetricOptions } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
-import { IORedisInstrumentation } from '@opentelemetry/instrumentation-ioredis';
 import { NestInstrumentation } from '@opentelemetry/instrumentation-nestjs-core';
-import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { AggregationType } from '@opentelemetry/sdk-metrics';
 import { NodeSDK, contextBase } from '@opentelemetry/sdk-node';
@@ -75,9 +73,7 @@ export const bootstrapTelemetry = (port: number) => {
         enabled: telemetry.metrics.has(ImmichTelemetry.Api),
         ignoreIncomingRequestHook: (request) => excludePaths.some((item) => request.url?.startsWith(item)),
       }),
-      new IORedisInstrumentation(),
       new NestInstrumentation(),
-      new PgInstrumentation(),
     ],
     views: [
       {

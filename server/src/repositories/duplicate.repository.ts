@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { type Kysely, type NotNull, type Selectable, type ShallowDehydrateObject, sql } from 'kysely';
-import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { Chunked, DummyValue, GenerateSql } from 'src/decorators.js';
@@ -10,6 +9,7 @@ import { probes } from 'src/repositories/database.repository.js';
 import { DB } from 'src/schema/index.js';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table.js';
 import { anyUuid, asUuid, withDefaultVisibility } from 'src/utils/database.js';
+import { jsonArrayFrom } from 'src/utils/sql-json.js';
 
 // Maximum number of candidate duplicates to return from vector search
 const DUPLICATE_SEARCH_LIMIT = 64;
@@ -32,8 +32,49 @@ interface DuplicateMergeOptions {
 export class DuplicateRepository {
   constructor(@InjectKysely() private db: Kysely<DB>) {}
 
+  private sqliteDuplicateAssets(duplicateIdRef: string, userId?: string) {
+    const boolCols = new Set(['isFavorite', 'isExternal', 'isOffline', 'isEdited']);
+    const cols = (list: readonly string[], alias: string) =>
+      list
+        .map((c) => {
+          const n = c.split('.').at(-1);
+          if (boolCols.has(n!)) {
+            return `'${n}', (case when jbool("${alias}"."${n}") is null then null else json(case when jbool("${alias}"."${n}")=1 then 'true' else 'false' end) end)`;
+          }
+          return `'${n}', jval("${alias}"."${n}")`;
+        })
+        .join(', ');
+    const owner = userId === undefined ? '' : `and a2."ownerId" = '${userId}' `;
+    const text =
+      `(select json_group_array(jo) from (select json_object(${cols([...columns.asset, 'asset.isFavorite', 'asset.isOffline', 'asset.isEdited'], 'a2')}, ` +
+      `'exifInfo', (select json_object(${cols(columns.exif, 'asset_exif')}) from "asset_exif" where "asset_exif"."assetId" = "a2"."id"), ` +
+      `'tags', (select coalesce(json_group_array(json_object(${cols(columns.tag, 'tag')})), '[]') from "tag" inner join "tag_asset" on "tag"."id" = "tag_asset"."tagId" where "tag_asset"."assetId" = "a2"."id")` +
+      `) as jo from "asset" a2 where a2."duplicateId" = ${duplicateIdRef} and a2."visibility" in ('archive', 'timeline') ${owner}and a2."deletedAt" is null and a2."stackId" is null order by a2."localDateTime" asc limit -1))`;
+    return sql.raw(text);
+  }
+
   @GenerateSql({ params: [DummyValue.UUID] })
   getAll(userId: string) {
+    return this.db
+      .with('duplicates', (qb) =>
+        qb
+          .selectFrom('asset')
+          .select('asset.duplicateId')
+          .select((_eb) =>
+            this.sqliteDuplicateAssets('"asset"."duplicateId"', userId).$castTo<MapAsset[]>().as('assets'),
+          )
+          .where('asset.ownerId', '=', asUuid(userId))
+          .where('asset.duplicateId', 'is not', null)
+          .$narrowType<{ duplicateId: NotNull }>()
+          .where('asset.deletedAt', 'is', null)
+          .where('asset.stackId', 'is', null)
+          .groupBy('asset.duplicateId'),
+      )
+      .selectFrom('duplicates')
+      .selectAll()
+      .where((eb) => eb(eb.fn('json_array_length', ['assets']), '>', 1))
+      .execute();
+
     return (
       this.db
         .with('duplicates', (qb) =>
@@ -113,45 +154,19 @@ export class DuplicateRepository {
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })
   async get(duplicateId: string): Promise<{ duplicateId: string; assets: MapAsset[] } | undefined> {
-    const result = await this.db
+    const sqliteResult = await this.db
       .selectFrom('asset')
-      .$call(withDefaultVisibility)
-      // Use innerJoinLateral to build a composite object per asset that includes
-      // exifInfo and tags. This "asset2" object is then aggregated via jsonAgg.
-      // Tags must be included here (not via separate joins) so they appear in the
-      // final MapAsset[] output - needed for tag synchronization during resolution.
-      .innerJoinLateral(
-        (qb) =>
-          qb
-            .selectFrom('asset_exif')
-            .selectAll('asset')
-            .select((eb) => eb.fn.toJson('asset_exif').as('exifInfo'))
-            .select((eb) =>
-              jsonArrayFrom(
-                eb
-                  .selectFrom('tag')
-                  .select(columns.tag)
-                  .innerJoin('tag_asset', 'tag.id', 'tag_asset.tagId')
-                  .whereRef('tag_asset.assetId', '=', 'asset.id'),
-              ).as('tags'),
-            )
-            .whereRef('asset_exif.assetId', '=', 'asset.id')
-            .as('asset2'),
-        (join) => join.onTrue(),
-      )
       .select('asset.duplicateId')
-      .select((eb) => eb.fn.jsonAgg('asset2').orderBy('asset.localDateTime', 'asc').$castTo<MapAsset[]>().as('assets'))
+      .select((_eb) => this.sqliteDuplicateAssets('"asset"."duplicateId"').$castTo<MapAsset[]>().as('assets'))
       .where('asset.duplicateId', '=', asUuid(duplicateId))
       .where('asset.deletedAt', 'is', null)
       .where('asset.stackId', 'is', null)
       .groupBy('asset.duplicateId')
       .executeTakeFirst();
-
-    if (!result || !result.duplicateId) {
+    if (!sqliteResult || !(sqliteResult as any).duplicateId) {
       return;
     }
-
-    return { duplicateId: result.duplicateId, assets: result.assets };
+    return { duplicateId: (sqliteResult as any).duplicateId, assets: (sqliteResult as any).assets };
   }
 
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.UUID] })

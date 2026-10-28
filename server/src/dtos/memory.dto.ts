@@ -9,7 +9,7 @@ import { isoDateToDate, isoDatetimeToDate, nonEmptyPartial, stringToBool } from 
 
 const MemorySearchSchema = z
   .object({
-    id: z.uuidv4().optional().describe('Memory ID'),
+    id: z.uuid().optional().describe('Memory ID'),
     type: MemoryTypeSchema.optional(),
     for: isoDateToDate.optional().describe('Filter by date'),
     isTrashed: stringToBool.optional().describe('Include trashed memories'),
@@ -24,7 +24,7 @@ const MemorySearchSchema = z
 const MemoryDataSchema = z
   .object({
     year: z.int().min(1000).max(9999).describe('Year of the memory'),
-    personId: z.uuidv4().optional().describe('Person ID (birthday memories)'),
+    personId: z.uuid().optional().describe('Person ID (birthday memories)'),
     personName: z.string().optional().describe('Name of the person when the memory was created (birthday memories)'),
   })
   .meta({ id: 'MemoryDataDto' });
@@ -41,7 +41,7 @@ const MemoryCreateBaseSchema = z.object({
   type: MemoryTypeSchema,
   data: MemoryDataSchema,
   memoryAt: isoDatetimeToDate.describe('Memory date'),
-  assetIds: z.array(z.uuidv4()).optional().describe('Asset IDs to associate with memory'),
+  assetIds: z.array(z.uuid()).optional().describe('Asset IDs to associate with memory'),
   isSaved: z.boolean().optional().describe('Is memory saved'),
   seenAt: isoDatetimeToDate.optional().describe('Date when memory was seen'),
   showAt: isoDatetimeToDate
@@ -76,7 +76,7 @@ const MemoryStatisticsResponseSchema = z
 
 const MemoryResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Memory ID'),
+    id: z.uuid().describe('Memory ID'),
     createdAt: isoDatetimeToDate.describe('Creation date'),
     updatedAt: isoDatetimeToDate.describe('Last update date'),
     deletedAt: isoDatetimeToDate.optional().describe('Deletion date'),
@@ -84,7 +84,7 @@ const MemoryResponseSchema = z
     seenAt: isoDatetimeToDate.optional().describe('Date when memory was seen'),
     showAt: isoDatetimeToDate.optional().describe('Date when memory should be shown'),
     hideAt: isoDatetimeToDate.optional().describe('Date when memory should be hidden'),
-    ownerId: z.uuidv4().describe('Owner user ID'),
+    ownerId: z.uuid().describe('Owner user ID'),
     type: MemoryTypeSchema,
     data: MemoryDataSchema,
     isSaved: z.boolean().describe('Is memory saved'),

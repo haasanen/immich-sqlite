@@ -13,7 +13,7 @@ const WorkflowTriggerResponseSchema = z
 
 const WorkflowSearchSchema = z
   .object({
-    id: z.uuidv4().optional().describe('Workflow ID'),
+    id: z.uuid().optional().describe('Workflow ID'),
     trigger: WorkflowTriggerSchema.optional().describe('Workflow trigger type'),
     name: z.string().optional().describe('Workflow name'),
     description: z.string().optional().describe('Workflow description'),
@@ -62,7 +62,7 @@ const WorkflowUpdateSchema = z
 
 const WorkflowResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Workflow ID'),
+    id: z.uuid().describe('Workflow ID'),
     trigger: WorkflowTriggerSchema.describe('Workflow trigger type'),
     name: z.string().nullable().describe('Workflow name'),
     description: z.string().nullable().describe('Workflow description'),
@@ -85,7 +85,7 @@ const WorkflowShareResponseSchema = z
 
 const WorkflowLogEntrySchema = z
   .object({
-    id: z.uuidv4().describe('Workflow log entry ID'),
+    id: z.uuid().describe('Workflow log entry ID'),
     at: isoDatetimeToDate.describe('Workflow run date/time'),
     result: WorkflowResultSchema.describe('Workflow run result'),
     triggerDataId: z.uuid().optional().describe('Workflow trigger data ID'),

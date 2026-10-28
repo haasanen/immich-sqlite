@@ -4,17 +4,17 @@ import { AssetResponseSchema } from 'src/dtos/asset-response.dto.js';
 
 const DuplicateResponseSchema = z
   .object({
-    duplicateId: z.uuidv4().describe('Duplicate group ID'),
+    duplicateId: z.uuid().describe('Duplicate group ID'),
     assets: z.array(AssetResponseSchema).describe('Duplicate assets'),
-    suggestedKeepAssetIds: z.array(z.uuidv4()).describe('Suggested asset IDs to keep based on file size and EXIF data'),
+    suggestedKeepAssetIds: z.array(z.uuid()).describe('Suggested asset IDs to keep based on file size and EXIF data'),
   })
   .meta({ id: 'DuplicateResponseDto' });
 
 const DuplicateResolveGroupSchema = z
   .object({
-    duplicateId: z.uuidv4(),
-    keepAssetIds: z.array(z.uuidv4()).describe('Asset IDs to keep'),
-    trashAssetIds: z.array(z.uuidv4()).describe('Asset IDs to trash or delete'),
+    duplicateId: z.uuid(),
+    keepAssetIds: z.array(z.uuid()).describe('Asset IDs to keep'),
+    trashAssetIds: z.array(z.uuid()).describe('Asset IDs to trash or delete'),
   })
   .meta({ id: 'DuplicateResolveGroupDto' });
 

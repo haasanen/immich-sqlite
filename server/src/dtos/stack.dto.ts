@@ -6,26 +6,26 @@ import { AuthDto } from 'src/dtos/auth.dto.js';
 
 const StackSearchSchema = z
   .object({
-    primaryAssetId: z.uuidv4().optional().describe('Filter by primary asset ID'),
+    primaryAssetId: z.uuid().optional().describe('Filter by primary asset ID'),
   })
   .meta({ id: 'StackSearchDto' });
 
 const StackCreateSchema = z
   .object({
-    assetIds: z.array(z.uuidv4()).min(2).describe('Asset IDs (first becomes primary, min 2)'),
+    assetIds: z.array(z.uuid()).min(2).describe('Asset IDs (first becomes primary, min 2)'),
   })
   .meta({ id: 'StackCreateDto' });
 
 const StackUpdateSchema = z
   .object({
-    primaryAssetId: z.uuidv4().optional().describe('Primary asset ID'),
+    primaryAssetId: z.uuid().optional().describe('Primary asset ID'),
   })
   .meta({ id: 'StackUpdateDto' });
 
 const StackResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Stack ID'),
-    primaryAssetId: z.uuidv4().describe('Primary asset ID'),
+    id: z.uuid().describe('Stack ID'),
+    primaryAssetId: z.uuid().describe('Primary asset ID'),
     assets: z.array(AssetResponseSchema),
   })
   .describe('Stack response')

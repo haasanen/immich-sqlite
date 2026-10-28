@@ -63,6 +63,12 @@ const keyframeRow = (assetId: string, n: number) => ({
   outputFrames: 20 + n,
 });
 
+const withSortedLocked = <T extends { lockedProperties: readonly string[] | null }>(p: Promise<T>) =>
+  p.then((r) => ({ ...r, lockedProperties: r.lockedProperties ? [...r.lockedProperties].sort() : r.lockedProperties }));
+
+// Postgres returns the aggregate as text; SQLite returns a parsed object.
+const parseAssetsJson = (v: unknown) => (typeof v === 'string' ? JSON.parse(v) : v);
+
 describe(AssetRepository.name, () => {
   describe('getTimeBucket', () => {
     it('should order assets by local day first and fileCreatedAt within each day', async () => {
@@ -100,7 +106,7 @@ describe(AssetRepository.name, () => {
         { order: AssetOrder.Desc, userIds: [user.id], visibility: AssetVisibility.Timeline },
         auth,
       );
-      expect(JSON.parse(descendingBucket.assets)).toEqual(
+      expect(parseAssetsJson(descendingBucket.assets)).toEqual(
         expect.objectContaining({
           id: [nextLocalDayLaterAsset.id, nextLocalDayEarlierAsset.id, previousLocalDayAsset.id],
         }),
@@ -111,7 +117,7 @@ describe(AssetRepository.name, () => {
         { order: AssetOrder.Asc, userIds: [user.id], visibility: AssetVisibility.Timeline },
         auth,
       );
-      expect(JSON.parse(ascendingBucket.assets)).toEqual(
+      expect(parseAssetsJson(ascendingBucket.assets)).toEqual(
         expect.objectContaining({
           id: [previousLocalDayAsset.id, nextLocalDayEarlierAsset.id, nextLocalDayLaterAsset.id],
         }),
@@ -178,7 +184,7 @@ describe(AssetRepository.name, () => {
         auth,
       );
       // make sure they're ordered correctly
-      expect(JSON.parse(descendingBucket.assets)).toEqual(
+      expect(parseAssetsJson(descendingBucket.assets)).toEqual(
         expect.objectContaining({
           id: [time2DSC0004Asset.id, time2DSC0003Asset.id, time1DSC0002Asset.id, time1DSC0001Asset.id],
         }),
@@ -195,7 +201,7 @@ describe(AssetRepository.name, () => {
         },
         auth,
       );
-      expect(JSON.parse(ascendingBucket.assets)).toEqual(
+      expect(parseAssetsJson(ascendingBucket.assets)).toEqual(
         expect.objectContaining({
           id: [time1DSC0001Asset.id, time1DSC0002Asset.id, time2DSC0003Asset.id, time2DSC0004Asset.id],
         }),
@@ -267,7 +273,7 @@ describe(AssetRepository.name, () => {
         auth,
       );
       // make sure they're ordered correctly
-      expect(JSON.parse(descendingBucket.assets)).toEqual(
+      expect(parseAssetsJson(descendingBucket.assets)).toEqual(
         expect.objectContaining({
           id: [time2DSC0004Asset.id, time2DSC0003Asset.id, time1DSC0002Asset.id, time1DSC0001Asset.id],
         }),
@@ -284,7 +290,7 @@ describe(AssetRepository.name, () => {
         },
         auth,
       );
-      expect(JSON.parse(ascendingBucket.assets)).toEqual(
+      expect(parseAssetsJson(ascendingBucket.assets)).toEqual(
         expect.objectContaining({
           id: [time1DSC0001Asset.id, time1DSC0002Asset.id, time2DSC0003Asset.id, time2DSC0004Asset.id],
         }),
@@ -401,12 +407,14 @@ describe(AssetRepository.name, () => {
       });
 
       await expect(
-        ctx.database
-          .selectFrom('asset_exif')
-          .select('lockedProperties')
-          .where('assetId', '=', asset.id)
-          .executeTakeFirstOrThrow(),
-      ).resolves.toEqual({ lockedProperties: ['description', 'dateTimeOriginal'] });
+        withSortedLocked(
+          ctx.database
+            .selectFrom('asset_exif')
+            .select('lockedProperties')
+            .where('assetId', '=', asset.id)
+            .executeTakeFirstOrThrow(),
+        ),
+      ).resolves.toEqual({ lockedProperties: ['description', 'dateTimeOriginal'].sort() });
     });
 
     it('should deduplicate locked columns', async () => {
@@ -433,12 +441,14 @@ describe(AssetRepository.name, () => {
       });
 
       await expect(
-        ctx.database
-          .selectFrom('asset_exif')
-          .select('lockedProperties')
-          .where('assetId', '=', asset.id)
-          .executeTakeFirstOrThrow(),
-      ).resolves.toEqual({ lockedProperties: ['description', 'dateTimeOriginal'] });
+        withSortedLocked(
+          ctx.database
+            .selectFrom('asset_exif')
+            .select('lockedProperties')
+            .where('assetId', '=', asset.id)
+            .executeTakeFirstOrThrow(),
+        ),
+      ).resolves.toEqual({ lockedProperties: ['description', 'dateTimeOriginal'].sort() });
     });
   });
 

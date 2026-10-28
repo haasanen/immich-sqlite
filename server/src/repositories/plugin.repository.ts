@@ -1,7 +1,6 @@
 import { CallContext, Plugin as ExtismPlugin, newPlugin } from '@extism/extism';
 import { Injectable } from '@nestjs/common';
 import { Pool, createPool } from 'generic-pool';
-import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import type { Insertable, Kysely } from 'kysely';
 import { columns } from 'src/database.js';
@@ -12,6 +11,7 @@ import { LoggingRepository } from 'src/repositories/logging.repository.js';
 import { DB } from 'src/schema/index.js';
 import { PluginMethodTable } from 'src/schema/tables/plugin-method.table.js';
 import { PluginTable } from 'src/schema/tables/plugin.table.js';
+import { jsonArrayFrom } from 'src/utils/sql-json.js';
 
 type PluginMethod = { pluginKey: string; methodName: string };
 type PluginLoad = { key: string; label: string; wasmBytes: Buffer };

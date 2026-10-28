@@ -20,23 +20,8 @@ const resetEnv = () => {
     'IMMICH_TELEMETRY_INCLUDE',
     'IMMICH_TELEMETRY_EXCLUDE',
 
-    'DB_URL',
-    'DB_HOSTNAME',
-    'DB_PORT',
-    'DB_USERNAME',
-    'DB_PASSWORD',
-    'DB_DATABASE_NAME',
-    'DB_SSL_MODE',
+    'DB_LOCATION',
     'DB_SKIP_MIGRATIONS',
-    'DB_VECTOR_EXTENSION',
-
-    'REDIS_HOSTNAME',
-    'REDIS_PORT',
-    'REDIS_DBINDEX',
-    'REDIS_USERNAME',
-    'REDIS_PASSWORD',
-    'REDIS_SOCKET',
-    'REDIS_URL',
 
     'NO_COLOR',
   ]) {
@@ -44,7 +29,7 @@ const resetEnv = () => {
   }
 };
 
-const sentinelConfig = {
+const _sentinelConfig = {
   sentinels: [
     {
       host: 'redis-sentinel-node-0',
@@ -116,31 +101,16 @@ describe('getEnv', () => {
   });
 
   describe('database', () => {
-    it('should use defaults', () => {
+    it('should use sqlite defaults', () => {
       const { database } = getEnv();
-      expect(database).toEqual({
-        config: {
-          connectionType: 'parts',
-          host: 'database',
-          port: 5432,
-          database: 'immich',
-          username: 'postgres',
-          password: 'postgres',
-        },
-        skipMigrations: false,
-        vectorExtension: undefined,
-      });
+      expect(database.config).toEqual({ connectionType: 'sqlite', filename: '/data/immich.db' });
+      expect(database.skipMigrations).toBe(false);
     });
 
-    it('should validate DB_SSL_MODE', () => {
-      process.env.DB_SSL_MODE = 'invalid';
-      expect(() => getEnv()).toThrow(/\[DB_SSL_MODE\] Invalid option: expected one of/);
-    });
-
-    it('should accept a valid DB_SSL_MODE', () => {
-      process.env.DB_SSL_MODE = 'prefer';
+    it('should use DB_LOCATION', () => {
+      process.env.DB_LOCATION = '/data/immich.db';
       const { database } = getEnv();
-      expect(database.config).toMatchObject(expect.objectContaining({ ssl: 'prefer' }));
+      expect(database.config).toEqual({ connectionType: 'sqlite', filename: '/data/immich.db' });
     });
 
     it('should allow skipping migrations', () => {
@@ -148,45 +118,14 @@ describe('getEnv', () => {
       const { database } = getEnv();
       expect(database).toMatchObject({ skipMigrations: true });
     });
-
-    it('should use DB_URL', () => {
-      process.env.DB_URL = 'postgres://postgres1:postgres2@database1:54320/immich';
-      const { database } = getEnv();
-      expect(database.config).toMatchObject({
-        connectionType: 'url',
-        url: 'postgres://postgres1:postgres2@database1:54320/immich',
-      });
-    });
   });
 
   describe('redis', () => {
-    it('should use defaults', () => {
+    it('is disabled in this fork: embedded queue, no redis config', () => {
       const { redis } = getEnv();
-      expect(redis).toEqual({
-        host: 'redis',
-        port: 6379,
-        db: 0,
-        username: undefined,
-        password: undefined,
-        path: undefined,
-      });
-    });
-
-    it('should parse base64 encoded config, ignore other env', () => {
-      process.env.REDIS_URL = `ioredis://${Buffer.from(JSON.stringify(sentinelConfig)).toString('base64')}`;
-      process.env.REDIS_HOSTNAME = 'redis-host';
-      process.env.REDIS_USERNAME = 'redis-user';
-      process.env.REDIS_PASSWORD = 'redis-password';
-      const { redis } = getEnv();
-      expect(redis).toEqual(sentinelConfig);
-    });
-
-    it('should reject invalid json', () => {
-      process.env.REDIS_URL = `ioredis://${Buffer.from('{ "invalid json"').toString('base64')}`;
-      expect(() => getEnv()).toThrowError('Failed to decode redis options');
+      expect(redis).toBeNull();
     });
   });
-
   describe('noColor', () => {
     beforeEach(() => {
       delete process.env.NO_COLOR;

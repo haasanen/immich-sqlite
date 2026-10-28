@@ -23,7 +23,7 @@ const DEPRECATED_FLAT_FIELD = {
 };
 
 const BaseSearchSchema = z.object({
-  libraryId: z.uuidv4().nullish().describe('Library ID to filter by').meta(DEPRECATED_FLAT_FIELD),
+  libraryId: z.uuid().nullish().describe('Library ID to filter by').meta(DEPRECATED_FLAT_FIELD),
   type: AssetTypeSchema.optional().meta(DEPRECATED_FLAT_FIELD),
   isEncoded: z.boolean().optional().describe('Filter by encoded status').meta(DEPRECATED_FLAT_FIELD),
   isFavorite: z.boolean().optional().describe('Filter by favorite status').meta(DEPRECATED_FLAT_FIELD),
@@ -45,9 +45,9 @@ const BaseSearchSchema = z.object({
   model: z.string().nullable().optional().describe('Filter by camera model').meta(DEPRECATED_FLAT_FIELD),
   lensModel: z.string().nullable().optional().describe('Filter by lens model').meta(DEPRECATED_FLAT_FIELD),
   isNotInAlbum: z.boolean().optional().describe('Filter assets not in any album').meta(DEPRECATED_FLAT_FIELD),
-  personIds: z.array(z.uuidv4()).optional().describe('Filter by person IDs').meta(DEPRECATED_FLAT_FIELD),
-  tagIds: z.array(z.uuidv4()).nullish().describe('Filter by tag IDs').meta(DEPRECATED_FLAT_FIELD),
-  albumIds: z.array(z.uuidv4()).optional().describe('Filter by album IDs').meta(DEPRECATED_FLAT_FIELD),
+  personIds: z.array(z.uuid()).optional().describe('Filter by person IDs').meta(DEPRECATED_FLAT_FIELD),
+  tagIds: z.array(z.uuid()).nullish().describe('Filter by tag IDs').meta(DEPRECATED_FLAT_FIELD),
+  albumIds: z.array(z.uuid()).optional().describe('Filter by album IDs').meta(DEPRECATED_FLAT_FIELD),
   rating: z
     .int()
     .min(1)
@@ -131,19 +131,19 @@ const SearchSuggestionRequestSchema = z
   .meta({ id: 'SearchSuggestionRequestDto' });
 
 const IdFilterSchema = nonEmptyPartial({
-  eq: z.uuidv4(),
-  ne: z.uuidv4(),
+  eq: z.uuid(),
+  ne: z.uuid(),
 }).meta({ id: 'IdFilter' });
 
 const IdFilterNullableSchema = nonEmptyPartial({
-  eq: z.uuidv4().nullable(),
-  ne: z.uuidv4().nullable(),
+  eq: z.uuid().nullable(),
+  ne: z.uuid().nullable(),
 }).meta({ id: 'IdFilterNullable' });
 
 const IdsFilterSchema = nonEmptyPartial({
-  any: z.array(z.uuidv4()).min(1),
-  all: z.array(z.uuidv4()).min(1),
-  none: z.array(z.uuidv4()).min(1),
+  any: z.array(z.uuid()).min(1),
+  all: z.array(z.uuid()).min(1),
+  none: z.array(z.uuid()).min(1),
 }).meta({ id: 'IdsFilter' });
 
 const stringListShape = {
@@ -365,7 +365,7 @@ const RandomSearchSchema = withShapeExclusivity(RandomSearchBaseSchema).meta({ i
 
 const MetadataSearchSchema = withShapeExclusivity(
   RandomSearchBaseSchema.extend({
-    id: z.uuidv4().optional().describe('Filter by asset ID').meta(DEPRECATED_FLAT_FIELD),
+    id: z.uuid().optional().describe('Filter by asset ID').meta(DEPRECATED_FLAT_FIELD),
     description: z.string().trim().optional().describe('Filter by description text').meta(DEPRECATED_FLAT_FIELD),
     checksum: z.string().optional().describe('Filter by file checksum').meta(DEPRECATED_FLAT_FIELD),
     originalFileName: z.string().trim().optional().describe('Filter by original file name').meta(DEPRECATED_FLAT_FIELD),
@@ -391,7 +391,7 @@ const SmartSearchSchema = withShapeExclusivity(
   BaseSearchWithResultsSchema.extend({
     size: z.int().min(1).max(1000).default(100).describe('Number of results to return'),
     query: z.string().trim().optional().describe('Natural language search query'),
-    queryAssetId: z.uuidv4().optional().describe('Asset ID to use as search reference'),
+    queryAssetId: z.uuid().optional().describe('Asset ID to use as search reference'),
     language: z.string().optional().describe('Search language code'),
     page: z.int().min(1).optional().describe('Page number').meta(DEPRECATED_FLAT_FIELD),
     filter: filterField,

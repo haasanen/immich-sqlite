@@ -43,6 +43,8 @@ export type AssetFile = {
 
 export type Library = {
   id: string;
+  /** populated by getAll's count subquery; see mapLibrary */
+  asset_count?: number;
   ownerId: string;
   createdAt: Date;
   updatedAt: Date;

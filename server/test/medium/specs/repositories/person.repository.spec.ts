@@ -788,5 +788,14 @@ describe(PersonRepository.name, () => {
       ]);
       await expect(listFor(sut, user.id, { withHidden: true })).resolves.toHaveLength(2);
     });
+
+    it('should search person names accent-insensitively (unaccent + trgm threshold)', async () => {
+      const { ctx, sut } = setup();
+      const { user } = await ctx.newUser();
+      await newNamedPerson(ctx, user.id, 'Günter');
+      await newNamedPerson(ctx, user.id, 'Zbigniew');
+      const matches = await listFor(sut, user.id, { name: 'gunter' });
+      expect(matches.map((p) => p.name)).toContain('Günter');
+    });
   });
 });

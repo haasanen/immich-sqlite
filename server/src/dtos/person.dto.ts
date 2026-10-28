@@ -31,7 +31,7 @@ const PersonCreateSchema = z
   .meta({ id: 'PersonCreateDto' });
 
 const PersonUpdateBaseSchema = PersonCreateSchema.extend({
-  featureFaceAssetId: z.uuidv4().optional().describe('Asset ID used for feature face thumbnail'),
+  featureFaceAssetId: z.uuid().optional().describe('Asset ID used for feature face thumbnail'),
 });
 
 const PersonUpdateSchema = PersonUpdateBaseSchema.extend({
@@ -43,7 +43,7 @@ const PersonUpdateSchema = PersonUpdateBaseSchema.extend({
   .meta({ id: 'PersonUpdateDto' });
 
 const PeopleUpdateItemSchema = PersonUpdateSchema.extend({
-  id: z.uuidv4().describe('Person ID'),
+  id: z.uuid().describe('Person ID'),
 }).meta({ id: 'PeopleUpdateItem' });
 
 const PeopleUpdateSchema = z
@@ -54,15 +54,15 @@ const PeopleUpdateSchema = z
 
 const MergePersonSchema = z
   .object({
-    ids: z.array(z.uuidv4()).describe('Person IDs to merge'),
+    ids: z.array(z.uuid()).describe('Person IDs to merge'),
   })
   .meta({ id: 'MergePersonDto' });
 
 const PersonSearchSchema = z
   .object({
     withHidden: stringToBool.optional().describe('Include hidden people'),
-    closestPersonId: z.uuidv4().optional().describe('Closest person ID for similarity search'),
-    closestAssetId: z.uuidv4().optional().describe('Closest asset ID for similarity search'),
+    closestPersonId: z.uuid().optional().describe('Closest person ID for similarity search'),
+    closestAssetId: z.uuid().optional().describe('Closest asset ID for similarity search'),
     page: z.coerce.number().int().min(1).default(1).describe('Page number for pagination'),
     size: z.coerce.number().int().min(1).max(1000).default(500).describe('Number of items per page'),
     sharedById: z.uuid().optional().describe('Only include people to which the user gave access'),
@@ -108,7 +108,7 @@ const PeopleUserResponseSchema = UserResponseSchema.extend({
 
 export const PersonResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Person ID'),
+    id: z.uuid().describe('Person ID'),
     name: z.string().describe('Person name'),
     // TODO: use `isoDateToDate` when using `ZodSerializerDto` on the controllers.
     birthDate: z.string().meta({ format: 'date' }).describe('Person date of birth').nullable(),
@@ -159,7 +159,7 @@ export class PeopleUserResponseDto extends createZodDto(PeopleUserResponseSchema
 
 const AssetFaceResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Face ID'),
+    id: z.uuid().describe('Face ID'),
     imageHeight: z.int().min(0).describe('Image height in pixels'),
     imageWidth: z.int().min(0).describe('Image width in pixels'),
     boundingBoxX1: z.int().describe('Bounding box X1 coordinate'),
@@ -176,9 +176,9 @@ export class AssetFaceResponseDto extends createZodDto(AssetFaceResponseSchema) 
 
 const AssetFaceUpdateItemSchema = z
   .object({
-    personId: z.uuidv4().describe('Person ID'),
-    assetId: z.uuidv4().describe('Asset ID'),
-    userId: z.uuidv4().optional().describe('User ID'),
+    personId: z.uuid().describe('Person ID'),
+    assetId: z.uuid().describe('Asset ID'),
+    userId: z.uuid().optional().describe('User ID'),
   })
   .meta({ id: 'AssetFaceUpdateItem' });
 
@@ -190,7 +190,7 @@ const AssetFaceUpdateSchema = z
 
 const FaceSchema = z
   .object({
-    id: z.uuidv4().describe('Face ID'),
+    id: z.uuid().describe('Face ID'),
   })
   .meta({ id: 'FaceDto' });
 

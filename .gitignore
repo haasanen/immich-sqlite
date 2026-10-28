@@ -28,3 +28,8 @@ vite.config.js.timestamp-*
 .devcontainer/.env*
 *.tsbuildinfo
 *.tsbuildInfo
+
+# embedded queue runtime state (never commit)
+immich-queue.db
+immich-queue.db-shm
+immich-queue.db-wal

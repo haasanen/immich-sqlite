@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type Insertable, type Kysely, type Updateable, sql } from 'kysely';
 import { InjectKysely } from 'nestjs-kysely';
+import { Library } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { LibraryStatsResponseDto } from 'src/dtos/library.dto.js';
 import { AssetType, AssetVisibility } from 'src/enum.js';
@@ -29,13 +30,21 @@ export class LibraryRepository {
   }
 
   @GenerateSql({ params: [] })
-  getAll(withDeleted = false) {
+  getAll(withDeleted = false): Promise<Library[]> {
     return this.db
       .selectFrom('library')
       .selectAll('library')
+      .select((eb) =>
+        eb
+          .selectFrom('asset')
+          .whereRef('asset.libraryId', '=', 'library.id')
+          .where('asset.deletedAt', 'is', null)
+          .select(eb.fn.countAll<number>().as('c'))
+          .as('asset_count'),
+      )
       .orderBy('createdAt', 'asc')
       .$if(!withDeleted, (qb) => qb.where('library.deletedAt', 'is', null))
-      .execute();
+      .execute() as unknown as Promise<Library[]>;
   }
 
   @GenerateSql()

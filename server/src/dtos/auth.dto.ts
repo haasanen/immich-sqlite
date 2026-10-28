@@ -29,7 +29,7 @@ const LoginCredentialSchema = z
 const LoginResponseSchema = z
   .object({
     accessToken: z.string().describe('Access token'),
-    userId: z.uuidv4().describe('User ID'),
+    userId: z.uuid().describe('User ID'),
     userEmail: toEmail.describe('User email'),
     name: z.string().describe('User name'),
     profileImagePath: z.string().describe('Profile image path'),

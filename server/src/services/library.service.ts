@@ -623,6 +623,14 @@ export class LibraryService extends BaseService {
       return JobStatus.Skipped;
     }
 
+    // fork: every scan (including the one queued automatically on library creation)
+    // arms the file watcher for this library when watching is enabled. cross-process
+    // config events are not available in the embedded (redisless) deployment, so
+    // newly created libraries would otherwise go unwatched until a server restart.
+    if (this.watchLibraries) {
+      await this.watch(job.id);
+    }
+
     this.logger.debug(`Validating import paths for library ${library.id}...`);
 
     const validImportPaths: string[] = [];

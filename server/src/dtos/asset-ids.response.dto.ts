@@ -16,7 +16,7 @@ const AssetIdErrorReasonSchema = z
 /** @deprecated Use `BulkIdResponseDto` instead */
 const AssetIdsResponseSchema = z
   .object({
-    assetId: z.uuidv4().describe('Asset ID'),
+    assetId: z.uuid().describe('Asset ID'),
     success: z.boolean().describe('Whether operation succeeded'),
     error: AssetIdErrorReasonSchema.optional(),
   })
@@ -37,13 +37,13 @@ export const BulkIdErrorReasonSchema = z
 
 export const BulkIdsSchema = z
   .object({
-    ids: z.array(z.uuidv4()).describe('IDs to process'),
+    ids: z.array(z.uuid()).describe('IDs to process'),
   })
   .meta({ id: 'BulkIdsDto' });
 
 const BulkIdResponseSchema = z
   .object({
-    id: z.uuidv4().describe('ID'),
+    id: z.uuid().describe('ID'),
     success: z.boolean().describe('Whether operation succeeded'),
     error: BulkIdErrorReasonSchema.optional(),
     errorMessage: z.string().optional(),

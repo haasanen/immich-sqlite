@@ -24,7 +24,7 @@ import { mimeTypes } from 'src/utils/mime-types.js';
 
 const SanitizedAssetResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Asset ID'),
+    id: z.uuid().describe('Asset ID'),
     type: AssetTypeSchema,
     thumbhash: z
       .string()
@@ -52,8 +52,8 @@ export class SanitizedAssetResponseDto extends createZodDto(SanitizedAssetRespon
 
 const AssetStackResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Stack ID'),
-    primaryAssetId: z.uuidv4().describe('Primary asset ID'),
+    id: z.uuid().describe('Stack ID'),
+    primaryAssetId: z.uuid().describe('Primary asset ID'),
     assetCount: z.int().min(0).describe('Number of assets in stack'),
   })
   .meta({ id: 'AssetStackResponseDto' });
@@ -65,10 +65,10 @@ export const AssetResponseSchema = SanitizedAssetResponseSchema.extend(
       .string()
       .meta({ format: 'date-time' })
       .describe('The UTC timestamp when the asset was originally uploaded to Immich.'),
-    ownerId: z.uuidv4().describe('Owner user ID'),
+    ownerId: z.uuid().describe('Owner user ID'),
     owner: UserResponseSchema.optional(),
     libraryId: z
-      .uuidv4()
+      .uuid()
       .nullish()
       .describe('Library ID')
       .meta(new HistoryBuilder().added('v1').deprecated('v1').getExtensions()),
@@ -103,7 +103,7 @@ export const AssetResponseSchema = SanitizedAssetResponseSchema.extend(
     people: z.array(PersonResponseSchema).optional(),
     checksum: z.string().describe('Base64 encoded SHA1 hash'),
     stack: AssetStackResponseSchema.nullish(),
-    duplicateId: z.uuidv4().nullish().describe('Duplicate group ID'),
+    duplicateId: z.uuid().nullish().describe('Duplicate group ID'),
     resized: z
       .boolean()
       .optional()

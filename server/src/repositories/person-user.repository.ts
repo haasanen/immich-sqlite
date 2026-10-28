@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { Insertable, Kysely, sql } from 'kysely';
-import { jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
@@ -8,6 +7,7 @@ import { PersonUserRole, PersonUsersDeleteDto, PersonUsersSearchDto } from 'src/
 import { SharingDirection } from 'src/enum.js';
 import { DB } from 'src/schema/index.js';
 import { PersonUserTable } from 'src/schema/tables/person-user.table.js';
+import { jsonObjectFrom } from 'src/utils/sql-json.js';
 
 type CreateAllForOwnerOptions = { ownerId: string; sharedWithIds: string[]; role: PersonUserRole };
 

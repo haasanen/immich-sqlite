@@ -1,6 +1,6 @@
 import { Mocked, vitest } from 'vitest';
 import type { RepositoryInterface } from 'src/types.js';
-import { DatabaseExtension, ImmichEnvironment, ImmichWorker, LogFormat } from 'src/enum.js';
+import { ImmichEnvironment, ImmichWorker, LogFormat } from 'src/enum.js';
 import { ConfigRepository, EnvData } from 'src/repositories/config.repository.js';
 
 export const envData: EnvData = {
@@ -9,29 +9,16 @@ export const envData: EnvData = {
   logFormat: LogFormat.Console,
 
   buildMetadata: {},
-  bull: {
-    config: {
-      connection: {},
-      prefix: 'immich_bull',
-    },
-    queues: [{ name: 'queue-1' }],
-  },
-
   cls: {
     config: {},
   },
 
   database: {
     config: {
-      connectionType: 'parts',
-      database: 'immich',
-      host: 'database',
-      port: 5432,
-      username: 'postgres',
-      password: 'postgres',
+      connectionType: 'sqlite',
+      filename: 'immich.db',
     },
     skipMigrations: false,
-    vectorExtension: DatabaseExtension.VectorChord,
   },
 
   helmet: {
@@ -57,11 +44,7 @@ export const envData: EnvData = {
     },
   },
 
-  redis: {
-    host: 'redis',
-    port: 6379,
-    db: 0,
-  },
+  redis: null,
 
   resourcePaths: {
     lockFile: 'build-lock.json',

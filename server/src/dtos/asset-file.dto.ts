@@ -7,7 +7,7 @@ import { isoDatetimeToDate, stringToBool } from 'src/validation.js';
 
 const AssetFileSearchSchema = z
   .object({
-    assetId: z.uuidv4().describe('Asset ID to filter files by'),
+    assetId: z.uuid().describe('Asset ID to filter files by'),
     type: AssetFileTypeSchema.optional().describe('Filter by type of file'),
     isEdited: stringToBool.optional().describe('The file was generated from an edit'),
     isProgressive: stringToBool.optional().describe('The file is a progressively encoded JPEG'),
@@ -17,7 +17,7 @@ const AssetFileSearchSchema = z
 
 const AssetFileResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Asset file ID'),
+    id: z.uuid().describe('Asset file ID'),
     createdAt: isoDatetimeToDate.describe('Creation date'),
     updatedAt: isoDatetimeToDate.describe('Update date'),
     type: AssetFileTypeSchema.describe('Type of file'),

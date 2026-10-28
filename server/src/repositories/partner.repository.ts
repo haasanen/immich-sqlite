@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { jsonObjectFrom } from 'kysely/helpers/postgres';
 import { InjectKysely } from 'nestjs-kysely';
 import type { ExpressionBuilder, Insertable, Kysely, NotNull, Updateable } from 'kysely';
 import { columns } from 'src/database.js';
 import { DummyValue, GenerateSql } from 'src/decorators.js';
 import { DB } from 'src/schema/index.js';
 import { PartnerTable } from 'src/schema/tables/partner.table.js';
+import { jsonObjectFrom } from 'src/utils/sql-json.js';
 
 export interface PartnerIds {
   sharedById: string;

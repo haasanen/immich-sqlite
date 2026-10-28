@@ -94,10 +94,20 @@ describe(TagRepository.name, () => {
           .select(['id_ancestor', 'id_descendant'])
           .where('id_ancestor', '=', resultParent.id)
           .execute(),
-      ).resolves.toEqual([
-        { id_ancestor: resultParent.id, id_descendant: resultParent.id },
-        { id_ancestor: resultParent.id, id_descendant: resultChild.id },
-      ]);
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          { id_ancestor: resultParent.id, id_descendant: resultParent.id },
+          { id_ancestor: resultParent.id, id_descendant: resultChild.id },
+        ]),
+      );
+      // closure rows are set-semantic; SQLite's scan order for them is plan-dependent
+      await expect(
+        ctx.database
+          .selectFrom('tag_closure')
+          .select(['id_ancestor', 'id_descendant'])
+          .where('id_ancestor', '=', resultParent.id)
+          .execute(),
+      ).resolves.toHaveLength(2);
 
       await expect(
         ctx.database

@@ -263,6 +263,47 @@ describe(SearchService.name, () => {
       expect(response.assets.nextCursor).toBeNull();
     });
 
+    it('should match string pattern filters on original file name (like/startsWith/endsWith)', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const { asset: oslo } = await ctx.newAsset({ ownerId: user.id, originalFileName: 'oslo-fjord.jpg' });
+      const { asset: bergen } = await ctx.newAsset({ ownerId: user.id, originalFileName: 'bergen-dawn.JPG' });
+      const { asset: london } = await ctx.newAsset({ ownerId: user.id, originalFileName: 'london-rain.jpg' });
+
+      const auth = factory.auth({ user: { id: user.id } });
+      const like = await sut.searchMetadata(auth, { size: 250, filter: { originalFileName: { like: 'Osl' } } });
+      expect(like.assets.items.map(({ id }) => id).toSorted()).toEqual([oslo.id]);
+
+      const starts = await sut.searchMetadata(auth, {
+        size: 250,
+        filter: { originalFileName: { startsWith: 'london' } },
+      });
+      expect(starts.assets.items.map(({ id }) => id)).toEqual([london.id]);
+
+      const ends = await sut.searchMetadata(auth, {
+        size: 250,
+        filter: { originalFileName: { endsWith: 'dawn.jpg' } },
+      });
+      expect(ends.assets.items.map(({ id }) => id)).toEqual([bergen.id]);
+    });
+
+    it('should match string pattern filters accent-insensitively (unaccent invariant)', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      await ctx.newAsset({ ownerId: user.id, originalFileName: 'bergen-dawn.jpg' });
+      const { asset: matched } = await ctx.newAsset({ ownerId: user.id, originalFileName: 'Øslofjord.JPG' });
+
+      const auth = factory.auth({ user: { id: user.id } });
+      const accented = await sut.searchMetadata(auth, { size: 250, filter: { originalFileName: { like: 'øslo' } } });
+      expect(accented.assets.items.map(({ id }) => id)).toEqual([matched.id]);
+
+      const unaccentedUpper = await sut.searchMetadata(auth, {
+        size: 250,
+        filter: { originalFileName: { like: 'OSLO' } },
+      });
+      expect(unaccentedUpper.assets.items.map(({ id }) => id)).toEqual([matched.id]);
+    });
+
     it('should combine OR branches', async () => {
       const { sut, ctx } = setup();
       const { user } = await ctx.newUser();

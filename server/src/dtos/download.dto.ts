@@ -3,9 +3,9 @@ import z from 'zod';
 
 const DownloadInfoSchema = z
   .object({
-    assetIds: z.array(z.uuidv4()).optional().describe('Asset IDs to download'),
-    albumId: z.uuidv4().optional().describe('Album ID to download'),
-    userId: z.uuidv4().optional().describe('User ID to download assets from'),
+    assetIds: z.array(z.uuid()).optional().describe('Asset IDs to download'),
+    albumId: z.uuid().optional().describe('Album ID to download'),
+    userId: z.uuid().optional().describe('User ID to download assets from'),
     archiveSize: z.int().min(1).optional().describe('Archive size limit in bytes'),
   })
   .meta({ id: 'DownloadInfoDto' });
@@ -13,7 +13,7 @@ const DownloadInfoSchema = z
 const DownloadArchiveInfoSchema = z
   .object({
     size: z.int().describe('Archive size in bytes'),
-    assetIds: z.array(z.uuidv4()).describe('Asset IDs in this archive'),
+    assetIds: z.array(z.uuid()).describe('Asset IDs in this archive'),
   })
   .meta({ id: 'DownloadArchiveInfo' });
 
@@ -30,7 +30,7 @@ const DownloadArchiveSchema = z
     // While we can send arrays, the total request parameter count is limited to 1000 fields,
     // which would limit this DTO to a maximum of 1000 assets.
     assetIds: z
-      .preprocess((val) => (typeof val === 'string' ? val.split(',') : val), z.array(z.uuidv4()))
+      .preprocess((val) => (typeof val === 'string' ? val.split(',') : val), z.array(z.uuid()))
       .nonoptional()
       .describe('Asset IDs'),
     edited: z

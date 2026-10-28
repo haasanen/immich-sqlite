@@ -77,27 +77,31 @@ describe(SyncEntityType.PartnerV1, () => {
     const { partner: partner2 } = await ctx.newPartner({ sharedById: user1.id, sharedWithId: user2.id });
 
     const response = await ctx.syncStream(auth, [SyncRequestType.PartnersV1]);
-    expect(response).toEqual([
-      {
-        ack: expect.any(String),
-        data: {
-          inTimeline: partner1.inTimeline,
-          sharedById: partner1.sharedById,
-          sharedWithId: partner1.sharedWithId,
+    // PartnerV1 rows are set-semantic; emission order follows engine scan order
+    expect(response).toHaveLength(3);
+    expect(response.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        {
+          ack: expect.any(String),
+          data: {
+            inTimeline: partner1.inTimeline,
+            sharedById: partner1.sharedById,
+            sharedWithId: partner1.sharedWithId,
+          },
+          type: 'PartnerV1',
         },
-        type: 'PartnerV1',
-      },
-      {
-        ack: expect.any(String),
-        data: {
-          inTimeline: partner2.inTimeline,
-          sharedById: partner2.sharedById,
-          sharedWithId: partner2.sharedWithId,
+        {
+          ack: expect.any(String),
+          data: {
+            inTimeline: partner2.inTimeline,
+            sharedById: partner2.sharedById,
+            sharedWithId: partner2.sharedWithId,
+          },
+          type: 'PartnerV1',
         },
-        type: 'PartnerV1',
-      },
-      expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }),
-    ]);
+      ]),
+    );
+    expect(response[2]).toEqual(expect.objectContaining({ type: SyncEntityType.SyncCompleteV1 }));
 
     await ctx.syncAckAll(auth, response);
     await ctx.assertSyncIsComplete(auth, [SyncRequestType.PartnersV1]);

@@ -5,7 +5,7 @@ import { PartnerDirectionSchema } from 'src/enum.js';
 
 const PartnerCreateSchema = z
   .object({
-    sharedWithId: z.uuidv4().describe('User ID to share with'),
+    sharedWithId: z.uuid().describe('User ID to share with'),
   })
   .meta({ id: 'PartnerCreateDto' });
 

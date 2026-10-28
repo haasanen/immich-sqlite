@@ -13,7 +13,7 @@ import { stringToBool } from 'src/validation.js';
 
 const AlbumUserAddSchema = z
   .object({
-    userId: z.uuidv4().describe('User ID'),
+    userId: z.uuid().describe('User ID'),
     role: AlbumUserRoleSchema.default(AlbumUserRole.Editor).optional().describe('Album user role'),
   })
   .meta({ id: 'AlbumUserAddDto' });
@@ -26,7 +26,7 @@ const AddUsersSchema = z
 
 const AlbumUserCreateSchema = z
   .object({
-    userId: z.uuidv4().describe('User ID'),
+    userId: z.uuid().describe('User ID'),
     role: AlbumUserRoleSchema,
   })
   .meta({ id: 'AlbumUserCreateDto' });
@@ -51,14 +51,14 @@ const CreateAlbumSchema = z
           .getExtensions(),
       }),
     albumUsers: z.array(AlbumUserCreateSchema).optional().describe('Album users'),
-    assetIds: z.array(z.uuidv4()).optional().describe('Initial asset IDs'),
+    assetIds: z.array(z.uuid()).optional().describe('Initial asset IDs'),
   })
   .meta({ id: 'CreateAlbumDto' });
 
 const AlbumsAddAssetsSchema = z
   .object({
-    albumIds: z.array(z.uuidv4()).describe('Album IDs'),
-    assetIds: z.array(z.uuidv4()).describe('Asset IDs'),
+    albumIds: z.array(z.uuid()).describe('Album IDs'),
+    assetIds: z.array(z.uuid()).describe('Asset IDs'),
   })
   .meta({ id: 'AlbumsAddAssetsDto' });
 
@@ -88,7 +88,7 @@ const UpdateAlbumSchema = z
           )
           .getExtensions(),
       }),
-    albumThumbnailAssetId: z.uuidv4().optional().describe('Album thumbnail asset ID'),
+    albumThumbnailAssetId: z.uuid().optional().describe('Album thumbnail asset ID'),
     isActivityEnabled: z.boolean().optional().describe('Enable activity feed'),
     order: AssetOrderSchema.optional(),
   })
@@ -96,7 +96,7 @@ const UpdateAlbumSchema = z
 
 const GetAlbumsSchema = z
   .object({
-    id: z.uuidv4().optional().describe('Album ID'),
+    id: z.uuid().optional().describe('Album ID'),
     name: z.string().optional().describe('Album name (exact match)'),
     isOwned: stringToBool
       .optional()
@@ -104,7 +104,7 @@ const GetAlbumsSchema = z
     isShared: stringToBool
       .optional()
       .describe('Filter by shared status: true = only shared, false = not shared, undefined = no filter'),
-    assetId: z.uuidv4().optional().describe('Filter albums containing this asset ID (ignores other parameters)'),
+    assetId: z.uuid().optional().describe('Filter albums containing this asset ID (ignores other parameters)'),
   })
   .meta({ id: 'GetAlbumsDto' });
 
@@ -131,14 +131,14 @@ const AlbumUserResponseSchema = z
 
 const ContributorCountResponseSchema = z
   .object({
-    userId: z.uuidv4().describe('User ID'),
+    userId: z.uuid().describe('User ID'),
     assetCount: z.int().min(0).describe('Number of assets contributed'),
   })
   .meta({ id: 'ContributorCountResponseDto' });
 
 export const AlbumResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Album ID'),
+    id: z.uuid().describe('Album ID'),
     albumName: z.string().describe('Album name'),
     description: z
       .string()
@@ -156,7 +156,7 @@ export const AlbumResponseSchema = z
     createdAt: z.string().meta({ format: 'date-time' }).describe('Creation date'),
     // TODO: use `isoDatetimeToDate` when using `ZodSerializerDto` on the controllers.
     updatedAt: z.string().meta({ format: 'date-time' }).describe('Last update date'),
-    albumThumbnailAssetId: z.uuidv4().nullable().describe('Thumbnail asset ID'),
+    albumThumbnailAssetId: z.uuid().nullable().describe('Thumbnail asset ID'),
     shared: z.boolean().describe('Is shared album'),
     albumUsers: z
       .array(AlbumUserResponseSchema)
@@ -191,11 +191,11 @@ export const AlbumResponseSchema = z
   .meta({ id: 'AlbumResponseDto' });
 
 const AlbumUserParamSchema = z.object({
-  id: z.uuidv4().describe('Album ID'),
+  id: z.uuid().describe('Album ID'),
   // TODO: disallow 'me' as a shortcut in v4 and type userId as uuidv4
   userId: z
     .string()
-    .refine((value) => value === 'me' || z.uuidv4().safeParse(value).success, {
+    .refine((value) => value === 'me' || z.uuid().safeParse(value).success, {
       error: 'Must be a UUID v4 or "me"',
     })
     .describe('Album user ID, or "me" to reference the current user.')

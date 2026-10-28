@@ -2,16 +2,6 @@ import z from 'zod';
 import { ImmichEnvironmentSchema, LogFormatSchema, LogLevelSchema } from 'src/enum.js';
 import { IsIPRange } from 'src/validation.js';
 
-// TODO import from sql-tools once the swagger plugin supports external enums
-enum DatabaseSslMode {
-  Disable = 'disable',
-  Allow = 'allow',
-  Prefer = 'prefer',
-  Require = 'require',
-  VerifyFull = 'verify-full',
-}
-
-const DatabaseSslModeSchema = z.enum(DatabaseSslMode).describe('Database SSL mode').meta({ id: 'DatabaseSslMode' });
 const absolutePath = z.string().regex(/^\//, 'Must be an absolute path').optional();
 /**
  * Treat certain strings as booleans and coerce them to boolean
@@ -69,22 +59,8 @@ export const EnvSchema = z
     IMMICH_TRUSTED_PROXIES: trustedProxiesSchema,
     IMMICH_WORKERS_INCLUDE: z.string().optional(),
     IMMICH_WORKERS_EXCLUDE: z.string().optional(),
-    DB_DATABASE_NAME: z.string().optional(),
-    DB_HOSTNAME: z.string().optional(),
-    DB_PASSWORD: z.string().optional(),
-    DB_PORT: z.coerce.number().int().optional(),
     DB_SKIP_MIGRATIONS: stringBool.optional(),
-    DB_SSL_MODE: DatabaseSslModeSchema.optional(),
-    DB_URL: z.string().optional(),
-    DB_USERNAME: z.string().optional(),
-    DB_VECTOR_EXTENSION: z.enum(['pgvector', 'vectorchord']).optional(),
+    DB_LOCATION: z.string().optional(),
     NO_COLOR: z.string().optional(),
-    REDIS_HOSTNAME: z.string().optional(),
-    REDIS_PORT: z.coerce.number().int().optional(),
-    REDIS_DBINDEX: z.coerce.number().int().optional(),
-    REDIS_USERNAME: z.string().optional(),
-    REDIS_PASSWORD: z.string().optional(),
-    REDIS_SOCKET: z.string().optional(),
-    REDIS_URL: z.string().optional(),
   })
   .meta({ id: 'EnvDto' });

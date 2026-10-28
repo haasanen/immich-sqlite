@@ -13,7 +13,6 @@ import { AssetEditAction } from 'src/dtos/editing.dto.js';
 import { AssetFileType, AssetType, AssetVisibility, CacheControl, JobName } from 'src/enum.js';
 import { AuthRequest } from 'src/middleware/auth.guard.js';
 import { AssetMediaService } from 'src/services/asset-media.service.js';
-import { ASSET_CHECKSUM_CONSTRAINT } from 'src/utils/database.js';
 import { ImmichFileResponse } from 'src/utils/file.js';
 import { AssetFileFactory } from 'test/factories/asset-file.factory.js';
 import { AssetFactory } from 'test/factories/asset.factory.js';
@@ -297,6 +296,30 @@ describe(AssetMediaService.name, () => {
   });
 
   describe('uploadAsset', () => {
+    it('should reject all upload surfaces in browse-only mode', async () => {
+      const savedNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production'; // product build: gate is unconditional
+      try {
+        const file = {
+          uuid: 'random-uuid',
+          originalPath: 'fake_path/asset_1.jpeg',
+          mimeType: 'image/jpeg',
+          checksum: Buffer.from('file hash', 'utf8'),
+          originalName: 'asset_1.jpeg',
+          size: 42,
+        };
+        await expect(sut.uploadAsset(authStub.user1, createDto, file)).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+          sut.bulkUploadCheck(authStub.user1, {
+            assets: [{ id: 'asset-id', checksum: Buffer.from('file hash', 'utf8').toString('hex') }],
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(mocks.asset.create).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = savedNodeEnv;
+      }
+    });
+
     it('should throw an error if the quota is exceeded', async () => {
       const file = {
         uuid: 'random-uuid',
@@ -366,8 +389,9 @@ describe(AssetMediaService.name, () => {
         originalName: 'asset_1.jpeg',
         size: 0,
       };
-      const error = new Error('unique key violation');
-      (error as any).constraint_name = ASSET_CHECKSUM_CONSTRAINT;
+      const error = Object.assign(new Error('UNIQUE constraint failed: asset.ownerId, asset.checksum'), {
+        code: 'SQLITE_CONSTRAINT_UNIQUE',
+      });
 
       mocks.asset.create.mockRejectedValue(error);
       mocks.asset.getUploadAssetIdByChecksum.mockResolvedValue(assetEntity.id);
@@ -393,8 +417,9 @@ describe(AssetMediaService.name, () => {
         originalName: 'asset_1.jpeg',
         size: 0,
       };
-      const error = new Error('unique key violation');
-      (error as any).constraint_name = ASSET_CHECKSUM_CONSTRAINT;
+      const error = Object.assign(new Error('UNIQUE constraint failed: asset.ownerId, asset.checksum'), {
+        code: 'SQLITE_CONSTRAINT_UNIQUE',
+      });
 
       mocks.asset.create.mockRejectedValue(error);
 

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { type ExpressionBuilder, type Insertable, type Kysely, type Updateable, sql } from 'kysely';
-import { jsonArrayFrom } from 'kysely/helpers/postgres';
 import { DateTime } from 'luxon';
 import { InjectKysely } from 'nestjs-kysely';
 import type { UserMetadata, UserMetadataItem } from 'src/types.js';
@@ -10,6 +9,7 @@ import { AssetType, AssetVisibility, UserStatus } from 'src/enum.js';
 import { DB } from 'src/schema/index.js';
 import { UserTable } from 'src/schema/tables/user.table.js';
 import { asUuid } from 'src/utils/database.js';
+import { jsonArrayFrom } from 'src/utils/sql-json.js';
 
 export interface UserListFilter {
   id?: string;

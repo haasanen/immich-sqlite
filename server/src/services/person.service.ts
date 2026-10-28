@@ -39,7 +39,6 @@ import {
   QueueName,
   SourceType,
   SystemMetadataKey,
-  VectorIndex,
 } from 'src/enum.js';
 import { BoundingBox } from 'src/repositories/machine-learning.repository.js';
 import { PersonId } from 'src/repositories/person.repository.js';
@@ -518,8 +517,6 @@ export class PersonService extends BaseService {
       );
       return JobStatus.Skipped;
     }
-
-    await this.databaseRepository.prewarm(VectorIndex.Face);
 
     const lastRun = new Date().toISOString();
 

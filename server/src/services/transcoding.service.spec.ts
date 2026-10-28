@@ -7,7 +7,6 @@ import {
   HLS_LEASE_DURATION_MS,
 } from 'src/constants.js';
 import { TranscodingService } from 'src/services/transcoding.service.js';
-import { VIDEO_STREAM_SESSION_PK_CONSTRAINT } from 'src/utils/database.js';
 import { eiffelTower, train, waterfall } from 'test/fixtures/media.stub.js';
 import { ServiceMocks, mockSpawn, newTestService } from 'test/utils.js';
 
@@ -50,7 +49,11 @@ describe(TranscodingService.name, () => {
     });
 
     it('treats a primary-key conflict as a no-op for replay tolerance', async () => {
-      mocks.videoStream.createSession.mockRejectedValue({ constraint_name: VIDEO_STREAM_SESSION_PK_CONSTRAINT });
+      mocks.videoStream.createSession.mockRejectedValue(
+        Object.assign(new Error('UNIQUE constraint failed: video_stream_session.id'), {
+          code: 'SQLITE_CONSTRAINT_PRIMARYKEY',
+        }),
+      );
 
       await sut.onSessionRequest({ sessionId, assetId, ownerId });
 

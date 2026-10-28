@@ -9,9 +9,9 @@ import { isoDatetimeToDate } from 'src/validation.js';
 
 const SharedLinkSearchSchema = z
   .object({
-    albumId: z.uuidv4().optional().describe('Filter by album ID'),
+    albumId: z.uuid().optional().describe('Filter by album ID'),
     id: z
-      .uuidv4()
+      .uuid()
       .optional()
       .describe('Filter by shared link ID')
       .meta(new HistoryBuilder().added('v2.5.0').getExtensions()),
@@ -21,8 +21,8 @@ const SharedLinkSearchSchema = z
 const SharedLinkCreateSchema = z
   .object({
     type: SharedLinkTypeSchema,
-    assetIds: z.array(z.uuidv4()).optional().describe('Asset IDs (for individual assets)'),
-    albumId: z.uuidv4().optional().describe('Album ID (for album sharing)'),
+    assetIds: z.array(z.uuid()).optional().describe('Asset IDs (for individual assets)'),
+    albumId: z.uuid().optional().describe('Album ID (for album sharing)'),
     description: z.string().nullable().optional().describe('Link description'),
     password: z.string().nullable().optional().describe('Link password'),
     slug: z.string().nullable().optional().describe('Custom URL slug'),
@@ -76,10 +76,10 @@ const SharedLinkLoginSchema = z
 
 const SharedLinkResponseSchema = z
   .object({
-    id: z.uuidv4().describe('Shared link ID'),
+    id: z.uuid().describe('Shared link ID'),
     description: z.string().nullable().describe('Link description'),
     password: z.string().nullable().describe('Has password'),
-    userId: z.uuidv4().describe('Owner user ID'),
+    userId: z.uuid().describe('Owner user ID'),
     key: z.string().describe('Encryption key (base64url)'),
     type: SharedLinkTypeSchema,
     createdAt: isoDatetimeToDate.describe('Creation date'),
