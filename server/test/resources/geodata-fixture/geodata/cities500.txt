@@ -1,0 +1,4 @@
+5128	München	Munich	Muenchen|München	48.13743	11.57549	P	PPL	DE		BY				1350000	500	520	Europe/Berlin	2023-01-01
+2643743	London	London	Londres|London	51.50853	-0.12574	P	PPL	GB		Z3	LDN			8416500	11	11	Europe/London	2023-01-01
+2867715	Munchenweiler			48.10000	8.10000	P	PPL	DE		BW				1000	200	200	Europe/Berlin	2023-01-01
+2934805	Münchenbuchsee			47.02000	7.56000	P	PPL	CH		BE				2623	527	550	Europe/Zurich	2023-01-01

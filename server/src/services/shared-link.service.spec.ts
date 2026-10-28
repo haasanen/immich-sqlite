@@ -24,6 +24,35 @@ describe(SharedLinkService.name, () => {
     expect(sut).toBeDefined();
   });
 
+  it('forces allowUpload off in browse-only mode (product invariant)', async () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const asset = AssetFactory.create();
+      mocks.access.asset.checkOwnerAccess.mockResolvedValue(new Set([asset.id]));
+      mocks.sharedLink.create.mockResolvedValue(
+        getForSharedLink(
+          SharedLinkFactory.from()
+            .asset(asset, (builder) => builder.exif())
+            .build(),
+        ),
+      );
+      await sut.create(authStub.admin, { type: SharedLinkType.Individual, assetIds: [asset.id] });
+      expect(mocks.sharedLink.create).toHaveBeenCalledWith(expect.objectContaining({ allowUpload: false }));
+
+      const id = sharedLinkStub.valid.id;
+      const linkEntity = SharedLinkFactory.from()
+        .asset(asset, (builder) => builder.exif())
+        .build();
+      mocks.sharedLink.get.mockResolvedValue(getForSharedLink(linkEntity));
+      mocks.sharedLink.update.mockResolvedValue(getForSharedLink(linkEntity));
+      await sut.update(authStub.user1, id, { allowUpload: true });
+      expect(mocks.sharedLink.update).toHaveBeenCalledWith(expect.objectContaining({ allowUpload: false }));
+    } finally {
+      process.env.NODE_ENV = prev;
+    }
+  });
+
   describe('getAll', () => {
     it('should return all shared links for a user', async () => {
       const [sharedLink1, sharedLink2] = [SharedLinkFactory.create(), SharedLinkFactory.create()];

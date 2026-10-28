@@ -39,7 +39,7 @@ const UpdateAssetBaseSchema = z
   );
 
 const AssetBulkUpdateBaseSchema = UpdateAssetBaseSchema.extend({
-  ids: z.array(z.uuidv4()).describe('Asset IDs to update'),
+  ids: z.array(z.uuid()).describe('Asset IDs to update'),
   duplicateId: z.string().nullish().describe('Duplicate ID'),
   dateTimeRelative: z.int().optional().describe('Relative time offset in minutes'),
   timeZone: z.string().optional().describe('Time zone (IANA timezone)'),
@@ -50,7 +50,7 @@ const AssetBulkUpdateSchema = AssetBulkUpdateBaseSchema.pipe(
 ).meta({ id: 'AssetBulkUpdateDto' });
 
 const UpdateAssetSchema = UpdateAssetBaseSchema.extend({
-  livePhotoVideoId: z.uuidv4().nullish().describe('Live photo video ID'),
+  livePhotoVideoId: z.uuid().nullish().describe('Live photo video ID'),
 }).meta({ id: 'UpdateAssetDto' });
 
 const AssetBulkDeleteSchema = BulkIdsSchema.extend({
@@ -59,7 +59,7 @@ const AssetBulkDeleteSchema = BulkIdsSchema.extend({
 
 export const AssetIdsSchema = z
   .object({
-    assetIds: z.array(z.uuidv4()).describe('Asset IDs'),
+    assetIds: z.array(z.uuid()).describe('Asset IDs'),
   })
   .meta({ id: 'AssetIdsDto' });
 
@@ -94,7 +94,7 @@ const AssetStatsResponseSchema = z
 
 const AssetMetadataRouteParamsSchema = z
   .object({
-    id: z.uuidv4().describe('Asset ID'),
+    id: z.uuid().describe('Asset ID'),
     key: z.string().describe('Metadata key'),
   })
   .meta({ id: 'AssetMetadataRouteParams' });
@@ -114,7 +114,7 @@ const AssetMetadataUpsertSchema = z
 
 const AssetMetadataBulkUpsertItemSchema = z
   .object({
-    assetId: z.uuidv4().describe('Asset ID'),
+    assetId: z.uuid().describe('Asset ID'),
     key: z.string().describe('Metadata key'),
     value: z.record(z.string(), z.unknown()).describe('Metadata value (object)'),
   })
@@ -128,7 +128,7 @@ const AssetMetadataBulkUpsertSchema = z
 
 const AssetMetadataBulkDeleteItemSchema = z
   .object({
-    assetId: z.uuidv4().describe('Asset ID'),
+    assetId: z.uuid().describe('Asset ID'),
     key: z.string().describe('Metadata key'),
   })
   .meta({ id: 'AssetMetadataBulkDeleteItemDto' });
@@ -148,13 +148,13 @@ const AssetMetadataResponseSchema = z
   .meta({ id: 'AssetMetadataResponseDto' });
 
 const AssetMetadataBulkResponseSchema = AssetMetadataResponseSchema.extend({
-  assetId: z.uuidv4().describe('Asset ID'),
+  assetId: z.uuid().describe('Asset ID'),
 }).meta({ id: 'AssetMetadataBulkResponseDto' });
 
 const AssetCopySchema = z
   .object({
-    sourceId: z.uuidv4().describe('Source asset ID'),
-    targetId: z.uuidv4().describe('Target asset ID'),
+    sourceId: z.uuid().describe('Source asset ID'),
+    targetId: z.uuid().describe('Target asset ID'),
     sharedLinks: z.boolean().default(true).optional().describe('Copy shared links'),
     albums: z.boolean().default(true).optional().describe('Copy album associations'),
     sidecar: z.boolean().default(true).optional().describe('Copy sidecar file'),
