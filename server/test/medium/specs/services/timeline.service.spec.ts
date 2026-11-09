@@ -45,6 +45,38 @@ describe(TimelineService.name, () => {
       ]);
     });
 
+    it('should get time buckets with stacked assets (regression: Postgres row-composite "stack" is not null)', async () => {
+      // Web UI default: withStacked=true compiles eb(eb.table('stack'),'is not',null)
+      // into a Postgres row test that SQLite rejects at prepare ("no such column").
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const auth = factory.auth({ user });
+      await ctx.newAsset({ ownerId: user.id, localDateTime: new Date('1970-02-10') });
+      const { asset: primary } = await ctx.newAsset({ ownerId: user.id, localDateTime: new Date('1970-02-11') });
+      const { asset: child } = await ctx.newAsset({ ownerId: user.id, localDateTime: new Date('1970-02-11') });
+      await ctx.newStack({ ownerId: user.id }, [primary.id, child.id]);
+
+      await expect(sut.getTimeBuckets(auth, { withStacked: true, userId: user.id })).resolves.toEqual([
+        { count: 2, timeBucket: '1970-02-01' },
+      ]);
+    });
+
+    it('should get time buckets filtered by a bounding box (geo circle rewrite)', async () => {
+      // bbox timeline queries embed greatest()/earth_box()/earth_distance()/ll_to_earth_public —
+      // Postgres-only constructs outside the plain rewriter vocabulary; live map/place filters hit them.
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const auth = factory.auth({ user });
+      const { asset: inBox } = await ctx.newAsset({ ownerId: user.id, localDateTime: new Date('1970-02-10') });
+      await ctx.newExif({ assetId: inBox.id, latitude: -12, longitude: -77 });
+      const { asset: far } = await ctx.newAsset({ ownerId: user.id, localDateTime: new Date('1970-02-10') });
+      await ctx.newExif({ assetId: far.id, latitude: 48.85, longitude: 2.35 });
+
+      await expect(
+        sut.getTimeBuckets(auth, { bbox: { west: -78, south: -13, east: -76, north: -11 } }),
+      ).resolves.toEqual([{ count: 1, timeBucket: '1970-02-01' }]);
+    });
+
     it('should return error if time bucket is requested with partners asset and archived', async () => {
       const { sut } = setup();
       const auth = factory.auth();

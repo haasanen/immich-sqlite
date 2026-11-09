@@ -50,6 +50,33 @@ const getCoercionMap = (): Map<string, Coercion> => {
   return coercionMap;
 };
 
+let rowRefPkMap: Map<string, string> | undefined;
+
+const getRowRefPkMap = (): Map<string, string> => {
+  if (rowRefPkMap) return rowRefPkMap;
+  rowRefPkMap = new Map();
+  for (const t of schemaFromCode().tables) {
+    const pk = t.columns.find((c) => c.primary);
+    rowRefPkMap.set(t.name, pk ? pk.name : 'id');
+  }
+  return rowRefPkMap;
+};
+
+// kysely's eb.table('t') used as a comparison value compiles to a Postgres
+// row composite: `"t" is [not] null` tests the joined row. SQLite parses the
+// bare quoted identifier as a column reference and fails at prepare with
+// `no such column: "t"` (live repro: timeline getTimeBuckets withStacked
+// crashing on `"stack" is not null`). SQLite has no row values at all; for a
+// LEFT JOINed table, PK-nullness is exactly equivalent to row-nullness, so
+// qualify the reference to its primary key. The (?!\s*\.) guard keeps real
+// column refs (`"stack"."id"`) untouched.
+const replaceTableRowNullTests = (sqlText: string): string => {
+  const pks = getRowRefPkMap();
+  return sqlText.replaceAll(/"([a-z_]+)"(?!\s*\.)(\s+is\s+(?:not\s+)?null)/gi, (m, t: string, rest: string) =>
+    pks.has(t) ? `"${t}"."${pks.get(t)}"${rest}` : m,
+  );
+};
+
 // Emulates pg_trigger_depth() trigger WHEN guards. SQLite FK cascades are
 // statement-internal, so nesting depth cannot be observed from scalar
 // functions; instead the driver records which tables the *directly executed*
@@ -1166,6 +1193,8 @@ export const rewritePgSql = (sqlText: string): string => {
   out = out.replaceAll(/=\s*any\(\s*(\?|[\w".]+)\s*\)/g, (_m, ref: string) =>
     ref === '?' ? 'in (select value from json_each(pg_array_json(?)))' : `in (select value from json_each(${ref}))`,
   );
+  // Postgres row-composite null tests on joined tables ("t" is [not] null)
+  out = replaceTableRowNullTests(out);
   // unnest(...) -> json_each row source; params normalized to JSON arrays
   out = replaceZipUnnest(out);
   out = replaceUnnest(out);

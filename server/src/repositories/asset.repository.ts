@@ -55,6 +55,7 @@ import {
 } from 'src/utils/database.js';
 import { globToPostgresRegex } from 'src/utils/misc.js';
 import { jsonArrayFrom, jsonObjectFrom } from 'src/utils/sql-json.js';
+import { geoDistanceMeters } from 'src/utils/sqlite-database.js';
 import { sqliteRowObjectSql } from 'src/utils/sqlite-json-helpers.js';
 
 export type AssetStats = Record<AssetType, number>;
@@ -160,14 +161,24 @@ const getBoundingCircle = (bbox: BoundingBox) => {
   const eastUnwrapped = west <= east ? east : east + 360;
   const centerLongitude = (((west + eastUnwrapped) / 2 + 540) % 360) - 180;
   const centerLatitude = (south + north) / 2;
-  const radius = sql<number>`greatest(
-    earth_distance(ll_to_earth_public(${centerLatitude}, ${centerLongitude}), ll_to_earth_public(${south}, ${west})),
-    earth_distance(ll_to_earth_public(${centerLatitude}, ${centerLongitude}), ll_to_earth_public(${south}, ${east})),
-    earth_distance(ll_to_earth_public(${centerLatitude}, ${centerLongitude}), ll_to_earth_public(${north}, ${west})),
-    earth_distance(ll_to_earth_public(${centerLatitude}, ${centerLongitude}), ll_to_earth_public(${north}, ${east}))
-  )`;
+  // FORK (SQLite): earth_box/earth_distance (Postgres earthdistance + cube) do not
+  // exist here. Radius = farthest bbox corner, measured with the haversine scalar
+  // registered on the SQLite handle (geo_distance_m) — same construction map.repository
+  // uses for places. Plain numbers keep every downstream site param-only.
+  const corner = (lat: number, lon: number) => geoDistanceMeters(centerLatitude, centerLongitude, lat, lon);
+  const radius = Math.max(corner(south, west), corner(south, east), corner(north, west), corner(north, east));
 
   return { centerLatitude, centerLongitude, radius };
+};
+
+// earth_box(c, r) @> ll_to_earth(p) is a coarse circle prefilter; the scalar form is
+// the exact same predicate, index-free but semantics-preserving (withBoundingBox's
+// lat/lon range filter still runs alongside and bounds the scan).
+const withBoundingCircle = <T>(qb: SelectQueryBuilder<DB, 'asset' | 'asset_exif', T>, bbox: BoundingBox) => {
+  const { centerLatitude, centerLongitude, radius } = getBoundingCircle(bbox);
+  return qb.where(
+    sql<SqlBool>`geo_distance_m(${centerLatitude}, ${centerLongitude}, asset_exif.latitude, asset_exif.longitude) <= ${radius}`,
+  );
 };
 
 const withBoundingBox = <T>(qb: SelectQueryBuilder<DB, 'asset' | 'asset_exif', T>, bbox: BoundingBox) => {
@@ -834,17 +845,10 @@ export class AssetRepository {
           .where('asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
           .$if(!!options.bbox, (qb) => {
             const bbox = options.bbox!;
-            const circle = getBoundingCircle(bbox);
 
-            const withBoundingCircle = qb
-              .innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId')
-              .where(
-                sql`earth_box(ll_to_earth_public(${circle.centerLatitude}, ${circle.centerLongitude}), ${circle.radius})`,
-                '@>',
-                sql`ll_to_earth_public(asset_exif.latitude, asset_exif.longitude)`,
-              );
+            const joined = qb.innerJoin('asset_exif', 'asset.id', 'asset_exif.assetId');
 
-            return withBoundingBox(withBoundingCircle, bbox);
+            return withBoundingBox(withBoundingCircle(joined, bbox), bbox);
           })
           .$if(options.visibility === undefined, withDefaultVisibility)
           .$if(!!options.visibility, (qb) => qb.where('asset.visibility', '=', options.visibility!))
@@ -938,15 +942,8 @@ export class AssetRepository {
           .$if(!!options.visibility, (qb) => qb.where('asset.visibility', '=', options.visibility!))
           .$if(!!options.bbox, (qb) => {
             const bbox = options.bbox!;
-            const circle = getBoundingCircle(bbox);
 
-            const withBoundingCircle = qb.where(
-              sql`earth_box(ll_to_earth_public(${circle.centerLatitude}, ${circle.centerLongitude}), ${circle.radius})`,
-              '@>',
-              sql`ll_to_earth_public(asset_exif.latitude, asset_exif.longitude)`,
-            );
-
-            return withBoundingBox(withBoundingCircle, bbox);
+            return withBoundingBox(withBoundingCircle(qb, bbox), bbox);
           })
           .where(
             truncatedDate(options.orderBy),

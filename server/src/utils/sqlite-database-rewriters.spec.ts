@@ -33,6 +33,23 @@ describe('rewritePgSql - trigram operator rewrites', () => {
   });
 });
 
+describe('rewritePgSql - row-composite table null tests (live timeline withStacked repro)', () => {
+  it('qualifies a bare joined-table reference in an is-not-null test to its primary key', () => {
+    const out = rewritePgSql(`and ("asset"."stackId" is null or "stack" is not null)`);
+    expect(out).toBe(`and ("asset"."stackId" is null or "stack"."id" is not null)`);
+  });
+
+  it('qualifies is-null tests on known tables', () => {
+    expect(rewritePgSql(`where "stack" is null`)).toBe(`where "stack"."id" is null`);
+  });
+
+  it('leaves qualified column refs and unknown identifiers untouched', () => {
+    expect(rewritePgSql(`where "stack"."id" is null and "not_a_table" is not null`)).toBe(
+      `where "stack"."id" is null and "not_a_table" is not null`,
+    );
+  });
+});
+
 describe('rewritePgSql - maintenance statements', () => {
   it('preserves VACUUM INTO verbatim (the online-backup statement must keep its target and bind)', () => {
     expect(rewritePgSql(`VACUUM INTO ?`)).toBe('VACUUM INTO ?');

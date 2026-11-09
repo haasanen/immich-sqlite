@@ -519,3 +519,27 @@ describe(AssetRepository.name, () => {
     });
   });
 });
+
+describe('getAssetIdByCity (Postgres distinct-on rewrite)', () => {
+  it('returns exactly one asset id per city meeting the threshold', async () => {
+    const { ctx, sut } = setup();
+    const { user } = await ctx.newUser();
+    const seedCity = async (city: string) => {
+      for (let i = 0; i < 2; i++) {
+        const { asset } = await ctx.newAsset({ ownerId: user.id });
+        await ctx.newExif({ assetId: asset.id, city });
+      }
+    };
+    await seedCity('Lima');
+    await seedCity('Quito');
+    const single = await ctx.newAsset({ ownerId: user.id });
+    await ctx.newExif({ assetId: single.asset.id, city: 'Solo' });
+
+    const res = await sut.getAssetIdByCity(user.id, { minAssetsPerField: 2, maxFields: 12 });
+    expect(res.fieldName).toBe('exifInfo.city');
+    expect(res.items.map((r) => r.value).sort()).toEqual(['Lima', 'Quito']);
+    for (const item of res.items) {
+      expect(typeof item.data).toBe('string');
+    }
+  });
+});
