@@ -2,6 +2,7 @@ import { emptyTrash, restoreTrash } from '@immich/sdk';
 import { modalManager, toastManager, type ActionItem } from '@immich/ui';
 import { mdiDeleteForeverOutline, mdiHistory } from '@mdi/js';
 import type { MessageFormatter } from 'svelte-i18n';
+import { authManager } from '$lib/managers/auth-manager.svelte';
 import { handleError } from '$lib/utils/handle-error';
 import { getFormatter } from '$lib/utils/i18n';
 
@@ -9,14 +10,14 @@ export const getTrashActions = ($t: MessageFormatter, assetCount: number) => {
   const RestoreAll: ActionItem = {
     title: $t('restore_all'),
     icon: mdiHistory,
-    $if: () => assetCount > 0,
+    $if: () => assetCount > 0 && !authManager.publicBrowse,
     onAction: () => handleRestoreTrash(),
   };
 
   const Empty: ActionItem = {
     title: $t('empty_trash'),
     icon: mdiDeleteForeverOutline,
-    $if: () => assetCount > 0,
+    $if: () => assetCount > 0 && !authManager.publicBrowse,
     onAction: () => handleEmptyTrash(),
   };
 

@@ -28,40 +28,42 @@ export const getPersonActions = ($t: MessageFormatter, person: PersonResponseDto
   const Edit: ActionItem = {
     title: $t('edit_person'),
     icon: mdiPencilOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => modalManager.show(PersonEditModal, { person }),
   };
 
   const Favorite: ActionItem = {
     title: $t('to_favorite'),
     icon: mdiHeartOutline,
-    $if: () => !person.isFavorite,
+    $if: () => !person.isFavorite && !authManager.publicBrowse,
     onAction: () => handleFavoritePerson(person),
   };
 
   const Unfavorite: ActionItem = {
     title: $t('unfavorite'),
     icon: mdiHeartMinusOutline,
-    $if: () => !!person.isFavorite,
+    $if: () => !!person.isFavorite && !authManager.publicBrowse,
     onAction: () => handleUnfavoritePerson(person),
   };
 
   const HidePerson: ActionItem = {
     title: $t('hide_person'),
     icon: mdiEyeOffOutline,
-    $if: () => !person.isHidden,
+    $if: () => !person.isHidden && !authManager.publicBrowse,
     onAction: () => handleHidePerson(person),
   };
 
   const ShowPerson: ActionItem = {
     title: $t('unhide_person'),
     icon: mdiEyeOutline,
-    $if: () => !!person.isHidden,
+    $if: () => !!person.isHidden && !authManager.publicBrowse,
     onAction: () => handleShowPerson(person),
   };
 
   const Access: ActionItem = {
     title: $t('manage_person_access'),
     icon: mdiAccountMultipleOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => modalManager.show(PersonEditAccessModal, { person }),
   };
 
@@ -72,6 +74,7 @@ export const getPersonAssetActions = ($t: MessageFormatter, person: PersonRespon
   const SetFeaturedPhoto: ActionItem = {
     title: $t('set_as_featured_photo'),
     icon: mdiFaceManProfile,
+    $if: () => !authManager.publicBrowse,
     onAction: () => handleSetFeaturedPhoto(person, asset.id),
   };
 

@@ -34,6 +34,8 @@
   };
 </script>
 
-{#if menuItem}
-  <MenuOption text={$t('change_location')} icon={mdiMapMarkerMultipleOutline} onClick={onAction} />
+{#if !authManager.publicBrowse}
+  {#if menuItem}
+    <MenuOption text={$t('change_location')} icon={mdiMapMarkerMultipleOutline} onClick={onAction} />
+  {/if}
 {/if}

@@ -26,12 +26,23 @@
       onAction({ type: asset.isArchived ? AssetAction.ARCHIVE : AssetAction.UNARCHIVE, asset: toTimelineAsset(asset) });
     }
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
 </script>
 
-<svelte:document use:shortcut={{ shortcut: { key: 'a', shift: true }, onShortcut: onArchive }} />
-
-<MenuOption
-  icon={asset.isArchived ? mdiArchiveArrowUpOutline : mdiArchiveArrowDownOutline}
-  text={asset.isArchived ? $t('unarchive') : $t('to_archive')}
-  onClick={onArchive}
+<svelte:document
+  use:shortcut={{
+    shortcut: { key: 'a', shift: true },
+    onShortcut: () => {
+      if (!authManager.publicBrowse) {
+        onArchive();
+      }
+    },
+  }}
 />
+{#if !authManager.publicBrowse}
+  <MenuOption
+    icon={asset.isArchived ? mdiArchiveArrowUpOutline : mdiArchiveArrowDownOutline}
+    text={asset.isArchived ? $t('unarchive') : $t('to_archive')}
+    onClick={onArchive}
+  />
+{/if}

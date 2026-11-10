@@ -74,12 +74,14 @@ export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseD
     title: $t('add_to_album'),
     icon: mdiPlus,
     shortcuts: [{ key: 'l' }],
+    $if: () => !authManager.publicBrowse,
     onAction: () => modalManager.show(AssetAddToAlbumModal, { assetIds }),
   };
 
   const CreateSharedLink: ActionItem = {
     title: $t('share'),
     icon: mdiShareVariantOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => modalManager.show(SharedLinkCreateModal, { assetIds }),
   };
 
@@ -94,7 +96,8 @@ export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseD
   const Tag: ActionItem = {
     title: $t('tag'),
     icon: mdiTagMultipleOutline,
-    $if: () => authManager.preferences.tags.enabled && assetMultiSelectManager.isAllUserOwned,
+    $if: () =>
+      !authManager.publicBrowse && authManager.preferences.tags.enabled && assetMultiSelectManager.isAllUserOwned,
     onAction: async () => {
       if (await modalManager.show(AssetTagModal, { assetIds })) {
         assetMultiSelectManager.clear();
@@ -106,18 +109,21 @@ export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseD
   const RefreshFacesJob: ActionItem = {
     title: $t('refresh_faces'),
     icon: mdiHeadSyncOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => onAction(AssetJobName.RefreshFaces),
   };
 
   const RefreshMetadataJob: ActionItem = {
     title: $t('refresh_metadata'),
     icon: mdiDatabaseRefreshOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => onAction(AssetJobName.RefreshMetadata),
   };
 
   const RegenerateThumbnailJob: ActionItem = {
     title: $t('refresh_thumbnails'),
     icon: mdiImageRefreshOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => onAction(AssetJobName.RegenerateThumbnail),
   };
 
@@ -125,7 +131,7 @@ export const getAssetBulkActions = ($t: MessageFormatter, album?: AlbumResponseD
     title: $t('refresh_encoded_videos'),
     icon: mdiCogRefreshOutline,
     onAction: () => onAction(AssetJobName.TranscodeVideo),
-    $if: () => ownedAssets.every((asset) => asset.isVideo),
+    $if: () => !authManager.publicBrowse && ownedAssets.every((asset) => asset.isVideo),
   };
 
   return {
@@ -147,14 +153,15 @@ export const getAssetActions = (
 ) => {
   const sharedLink = getSharedLink();
   const authUser = authManager.authenticated ? authManager.user : undefined;
-  const isOwner = !!(authUser && authUser.id === asset.ownerId);
+  const isOwner = !!(authUser && !authManager.publicBrowse && authUser.id === asset.ownerId);
   const isAlbumOwner = !!(authUser && authUser.id === album?.albumUsers[0].user.id);
   const smartSearchEnabled = featureFlagsManager.value.smartSearch;
 
   const Share: ActionItem = {
     title: $t('share'),
     icon: mdiShareVariantOutline,
-    $if: () => !!(authUser && !asset.isTrashed && asset.visibility !== AssetVisibility.Locked),
+    $if: () =>
+      !!(authUser && !authManager.publicBrowse && !asset.isTrashed && asset.visibility !== AssetVisibility.Locked),
     onAction: () => modalManager.show(SharedLinkCreateModal, { assetIds: [asset.id] }),
   };
 
@@ -231,7 +238,7 @@ export const getAssetActions = (
     title: $t('add_to_album'),
     icon: mdiPlus,
     shortcuts: [{ key: 'l' }],
-    $if: () => asset.visibility !== AssetVisibility.Locked && !asset.isTrashed,
+    $if: () => !authManager.publicBrowse && asset.visibility !== AssetVisibility.Locked && !asset.isTrashed,
     onAction: () => modalManager.show(AssetAddToAlbumModal, { assetIds: [asset.id] }),
   };
 
@@ -283,7 +290,7 @@ export const getAssetActions = (
   const Tag: ActionItem = {
     title: $t('add_tag'),
     icon: mdiTagPlusOutline,
-    $if: () => authManager.authenticated && authManager.preferences.tags.enabled,
+    $if: () => authManager.authenticated && !authManager.publicBrowse && authManager.preferences.tags.enabled,
     onAction: () => modalManager.show(AssetTagModal, { assetIds: [asset.id] }),
     shortcuts: { key: 't' },
   };
@@ -315,7 +322,8 @@ export const getAssetActions = (
   const SetProfilePicture: ActionItem = {
     title: $t('set_as_profile_picture'),
     icon: mdiAccountCircleOutline,
-    $if: () => asset.type === AssetTypeEnum.Image && asset.visibility !== AssetVisibility.Locked,
+    $if: () =>
+      !authManager.publicBrowse && asset.type === AssetTypeEnum.Image && asset.visibility !== AssetVisibility.Locked,
     onAction: () => modalManager.show(ProfileImageCropperModal, { asset }),
   };
 
@@ -337,18 +345,21 @@ export const getAssetActions = (
   const RefreshFacesJob: ActionItem = {
     title: $t('refresh_faces'),
     icon: mdiHeadSyncOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => handleRunAssetJob({ name: AssetJobName.RefreshFaces, assetIds: [asset.id] }),
   };
 
   const RefreshMetadataJob: ActionItem = {
     title: $t('refresh_metadata'),
     icon: mdiDatabaseRefreshOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => handleRunAssetJob({ name: AssetJobName.RefreshMetadata, assetIds: [asset.id] }),
   };
 
   const RegenerateThumbnailJob: ActionItem = {
     title: $t('refresh_thumbnails'),
     icon: mdiImageRefreshOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => handleRunAssetJob({ name: AssetJobName.RegenerateThumbnail, assetIds: [asset.id] }),
   };
 
@@ -356,7 +367,7 @@ export const getAssetActions = (
     title: $t('refresh_encoded_videos'),
     icon: mdiCogRefreshOutline,
     onAction: () => handleRunAssetJob({ name: AssetJobName.TranscodeVideo, assetIds: [asset.id] }),
-    $if: () => asset.type === AssetTypeEnum.Video,
+    $if: () => !authManager.publicBrowse && asset.type === AssetTypeEnum.Video,
   };
 
   return {

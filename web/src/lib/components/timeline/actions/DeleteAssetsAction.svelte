@@ -37,26 +37,29 @@
     assetMultiSelectManager.clear();
     loading = false;
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
 </script>
 
-{#if menuItem}
-  <MenuOption text={label} icon={mdiDeleteOutline} onClick={onAction} />
-{:else if loading}
-  <IconButton
-    shape="round"
-    color="secondary"
-    variant="ghost"
-    aria-label={$t('loading')}
-    icon={mdiTimerSand}
-    onclick={() => {}}
-  />
-{:else}
-  <IconButton
-    shape="round"
-    color="secondary"
-    variant="ghost"
-    aria-label={label}
-    icon={mdiDeleteForeverOutline}
-    onclick={onAction}
-  />
+{#if !authManager.publicBrowse}
+  {#if menuItem}
+    <MenuOption text={label} icon={mdiDeleteOutline} onClick={onAction} />
+  {:else if loading}
+    <IconButton
+      shape="round"
+      color="secondary"
+      variant="ghost"
+      aria-label={$t('loading')}
+      icon={mdiTimerSand}
+      onclick={() => {}}
+    />
+  {:else}
+    <IconButton
+      shape="round"
+      color="secondary"
+      variant="ghost"
+      aria-label={label}
+      icon={mdiDeleteForeverOutline}
+      onclick={onAction}
+    />
+  {/if}
 {/if}

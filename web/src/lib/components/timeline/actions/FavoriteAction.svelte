@@ -53,23 +53,26 @@
       loading = false;
     }
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
 </script>
 
-{#if menuItem}
-  <MenuOption {text} {icon} onClick={handleFavorite} />
-{/if}
+{#if !authManager.publicBrowse}
+  {#if menuItem}
+    <MenuOption {text} {icon} onClick={handleFavorite} />
+  {/if}
 
-{#if !menuItem}
-  {#if loading}
-    <IconButton
-      shape="round"
-      color="secondary"
-      variant="ghost"
-      aria-label={$t('loading')}
-      icon={mdiTimerSand}
-      onclick={() => {}}
-    />
-  {:else}
-    <IconButton shape="round" color="secondary" variant="ghost" aria-label={text} {icon} onclick={handleFavorite} />
+  {#if !menuItem}
+    {#if loading}
+      <IconButton
+        shape="round"
+        color="secondary"
+        variant="ghost"
+        aria-label={$t('loading')}
+        icon={mdiTimerSand}
+        onclick={() => {}}
+      />
+    {:else}
+      <IconButton shape="round" color="secondary" variant="ghost" aria-label={text} {icon} onclick={handleFavorite} />
+    {/if}
   {/if}
 {/if}

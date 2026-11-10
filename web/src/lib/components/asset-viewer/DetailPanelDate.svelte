@@ -20,7 +20,9 @@
       ? fromISODateTime(asset.exifInfo.dateTimeOriginal, timeZone)
       : fromISODateTimeUTC(asset.localDateTime),
   );
-  const isOwner = $derived(authManager.authenticated && asset.ownerId === authManager.user.id);
+  const isOwner = $derived(
+    authManager.authenticated && !authManager.publicBrowse && asset.ownerId === authManager.user.id,
+  );
 
   const handleChangeDate = async () => {
     if (!isOwner) {

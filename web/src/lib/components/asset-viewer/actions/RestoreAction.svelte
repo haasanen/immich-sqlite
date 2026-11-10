@@ -26,6 +26,9 @@
       handleError(error, $t('errors.unable_to_restore_assets'));
     }
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
 </script>
 
-<MenuOption icon={mdiHistory} onClick={handleRestoreAsset} text={$t('restore')} />
+{#if !authManager.publicBrowse}
+  <MenuOption icon={mdiHistory} onClick={handleRestoreAsset} text={$t('restore')} />
+{/if}

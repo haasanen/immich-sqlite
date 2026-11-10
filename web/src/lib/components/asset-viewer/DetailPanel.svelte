@@ -42,7 +42,9 @@
 
   let { asset, currentAlbum = null }: Props = $props();
 
-  let isOwner = $derived(authManager.authenticated && authManager.user.id === asset.ownerId);
+  let isOwner = $derived(
+    authManager.authenticated && !authManager.publicBrowse && authManager.user.id === asset.ownerId,
+  );
   let latlng = $derived(
     (() => {
       const lat = asset.exifInfo?.latitude;

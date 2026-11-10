@@ -25,8 +25,11 @@
       assetMultiSelectManager.clear();
     }
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
 </script>
 
-{#if menuItem}
-  <MenuOption text={$t('change_date')} icon={mdiCalendarEditOutline} onClick={handleChangeDate} />
+{#if !authManager.publicBrowse}
+  {#if menuItem}
+    <MenuOption text={$t('change_date')} icon={mdiCalendarEditOutline} onClick={handleChangeDate} />
+  {/if}
 {/if}

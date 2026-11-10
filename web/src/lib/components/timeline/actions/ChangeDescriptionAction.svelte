@@ -31,6 +31,8 @@
   };
 </script>
 
-{#if menuItem}
-  <MenuOption text={$t('change_description')} icon={mdiText} onClick={() => handleUpdateDescription()} />
+{#if !authManager.publicBrowse}
+  {#if menuItem}
+    <MenuOption text={$t('change_description')} icon={mdiText} onClick={() => handleUpdateDescription()} />
+  {/if}
 {/if}

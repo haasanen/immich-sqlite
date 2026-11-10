@@ -52,10 +52,13 @@
       handleError(error, $t('errors.unable_to_save_settings'));
     }
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
 </script>
 
-<MenuOption
-  onClick={() => toggleLockedVisibility()}
-  text={isLocked ? $t('move_off_locked_folder') : $t('move_to_locked_folder')}
-  icon={isLocked ? mdiLockOpenVariantOutline : mdiLockOutline}
-/>
+{#if !authManager.publicBrowse}
+  <MenuOption
+    onClick={() => toggleLockedVisibility()}
+    text={isLocked ? $t('move_off_locked_folder') : $t('move_to_locked_folder')}
+    icon={isLocked ? mdiLockOpenVariantOutline : mdiLockOutline}
+  />
+{/if}

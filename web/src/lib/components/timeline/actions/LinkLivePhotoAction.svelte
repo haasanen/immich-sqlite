@@ -68,21 +68,23 @@
   };
 </script>
 
-{#if menuItem}
-  <MenuOption {text} {icon} {onClick} />
-{/if}
+{#if !authManager.publicBrowse}
+  {#if menuItem}
+    <MenuOption {text} {icon} {onClick} />
+  {/if}
 
-{#if !menuItem}
-  {#if loading}
-    <IconButton
-      shape="round"
-      color="secondary"
-      variant="ghost"
-      aria-label={$t('loading')}
-      icon={mdiTimerSand}
-      onclick={() => {}}
-    />
-  {:else}
-    <IconButton shape="round" color="secondary" variant="ghost" aria-label={text} {icon} onclick={onClick} />
+  {#if !menuItem}
+    {#if loading}
+      <IconButton
+        shape="round"
+        color="secondary"
+        variant="ghost"
+        aria-label={$t('loading')}
+        icon={mdiTimerSand}
+        onclick={() => {}}
+      />
+    {:else}
+      <IconButton shape="round" color="secondary" variant="ghost" aria-label={text} {icon} onclick={onClick} />
+    {/if}
   {/if}
 {/if}

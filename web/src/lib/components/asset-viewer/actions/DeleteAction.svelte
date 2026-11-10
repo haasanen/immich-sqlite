@@ -56,20 +56,36 @@
       onUndoDelete,
     );
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
 </script>
 
 <svelte:document
   use:shortcuts={[
-    { shortcut: { key: 'Delete' }, onShortcut: () => trashOrDelete() },
-    { shortcut: { key: 'Delete', shift: true }, onShortcut: () => trashOrDelete(true) },
+    {
+      shortcut: { key: 'Delete' },
+      onShortcut: () => {
+        if (!authManager.publicBrowse) {
+          trashOrDelete();
+        }
+      },
+    },
+    {
+      shortcut: { key: 'Delete', shift: true },
+      onShortcut: () => {
+        if (!authManager.publicBrowse) {
+          trashOrDelete(true);
+        }
+      },
+    },
   ]}
 />
-
-<IconButton
-  color="secondary"
-  shape="round"
-  variant="ghost"
-  icon={forceDefault ? mdiDeleteForeverOutline : mdiDeleteOutline}
-  aria-label={forceDefault ? $t('permanently_delete') : $t('delete')}
-  onclick={() => trashOrDelete()}
-/>
+{#if !authManager.publicBrowse}
+  <IconButton
+    color="secondary"
+    shape="round"
+    variant="ghost"
+    icon={forceDefault ? mdiDeleteForeverOutline : mdiDeleteOutline}
+    aria-label={forceDefault ? $t('permanently_delete') : $t('delete')}
+    onclick={() => trashOrDelete()}
+  />
+{/if}

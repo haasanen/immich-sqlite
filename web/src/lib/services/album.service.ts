@@ -70,6 +70,7 @@ export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) =
     title: $t('add_user'),
     icon: mdiPlus,
     color: 'primary',
+    $if: () => !authManager.publicBrowse,
     onAction: () =>
       modalManager.show(AddUsersModal, {
         excludedUserIds: album.albumUsers.map(({ user: { id } }) => id),
@@ -82,13 +83,14 @@ export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) =
     title: $t('create_link'),
     icon: mdiLink,
     color: 'primary',
+    $if: () => !authManager.publicBrowse,
     onAction: () => modalManager.show(SharedLinkCreateModal, { albumId: album.id }),
   };
 
   const Delete: ActionItem = {
     title: $t('delete_album'),
     icon: mdiTrashCanOutline,
-    $if: () => isOwned,
+    $if: () => isOwned && !authManager.publicBrowse,
     onAction: () => handleDeleteAlbum(album),
   };
 
@@ -102,28 +104,28 @@ export const getAlbumActions = ($t: MessageFormatter, album: AlbumResponseDto) =
   const Edit: ActionItem = {
     title: $t('edit_album'),
     icon: mdiRenameOutline,
-    $if: () => isEditor,
+    $if: () => isEditor && !authManager.publicBrowse,
     onAction: () => modalManager.show(AlbumEditModal, { album }),
   };
 
   const Leave: ActionItem = {
     title: $t('leave_album'),
     icon: mdiExitToApp,
-    $if: () => !isOwned,
+    $if: () => !isOwned && !authManager.publicBrowse,
     onAction: () => handleLeaveAlbum(album),
   };
 
   const Options: ActionItem = {
     title: $t('options'),
     icon: mdiCogOutline,
-    $if: () => album.assetCount > 0,
+    $if: () => album.assetCount > 0 && !authManager.publicBrowse,
     onAction: () => modalManager.show(AlbumOptionsModal, { album, readOnly: !isOwned }),
   };
 
   const Share: ActionItem = {
     title: $t('share'),
     icon: mdiShareVariantOutline,
-    $if: () => isOwned,
+    $if: () => isOwned && !authManager.publicBrowse,
     onAction: () => modalManager.show(AlbumOptionsModal, { album }),
   };
 
@@ -134,6 +136,7 @@ export const getAlbumAssetActions = ($t: MessageFormatter, album: AlbumResponseD
   const SetCover: ActionItem = {
     title: $t('set_as_album_cover'),
     icon: mdiImageOutline,
+    $if: () => !authManager.publicBrowse,
     onAction: () => handleUpdateThumbnail(album, asset.id),
   };
 
@@ -145,7 +148,7 @@ export const getAlbumAssetsActions = ($t: MessageFormatter, album: AlbumResponse
     title: $t('add_assets'),
     color: 'primary',
     icon: mdiPlusBoxOutline,
-    $if: () => assets.length > 0,
+    $if: () => assets.length > 0 && !authManager.publicBrowse,
     onAction: () =>
       addAssetsToAlbums(
         [album.id],

@@ -20,15 +20,23 @@
       assetMultiSelectManager.clear();
     }
   };
+  import { authManager } from '$lib/managers/auth-manager.svelte';
+
+  const onPublicShortcut = () => {
+    if (!authManager.publicBrowse) {
+      handleSelect();
+    }
+  };
 </script>
 
-<svelte:document use:shortcut={{ shortcut: { key: 'Delete' }, onShortcut: handleSelect }} />
-
-<IconButton
-  shape="round"
-  color="secondary"
-  variant="ghost"
-  aria-label={$t('remove_from_shared_link')}
-  onclick={handleSelect}
-  icon={mdiDeleteOutline}
-/>
+<svelte:document use:shortcut={{ shortcut: { key: 'Delete' }, onShortcut: onPublicShortcut }} />
+{#if !authManager.publicBrowse}
+  <IconButton
+    shape="round"
+    color="secondary"
+    variant="ghost"
+    aria-label={$t('remove_from_shared_link')}
+    onclick={handleSelect}
+    icon={mdiDeleteOutline}
+  />
+{/if}
