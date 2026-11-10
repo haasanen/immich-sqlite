@@ -172,6 +172,29 @@ jobs:
           esac
           echo "geodata_places imported: $CNT rows: OK"
 
+          # fork feature: public LAN browse — the gallery opens at the site
+          # root: anonymous reads are served as the library owner while
+          # mutations and admin routes stay login-only (401).
+          ANON=$(curl -fsS "http://localhost:2283/api/timeline/buckets?from=2000-01-01T00:00:00.000Z&to=2099-12-31T23:59:59.999Z&count=1000&withStacked=true" || true)
+          case "$ANON" in *timeBucket*) ;; *) echo "anonymous timeline failed: ${ANON:0:200}"; docker logs --tail 120 immich-smoke; exit 1 ;; esac
+          echo "public browse: anonymous timeline buckets: OK"
+          ACNT=$(curl -fsS -X POST http://localhost:2283/api/search/metadata -H 'Content-Type: application/json' -d '{"size":10}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["assets"]["count"])')
+          [ "$ACNT" -ge 1 ] || { echo "anonymous metadata search saw $ACNT assets"; exit 1; }
+          echo "public browse: anonymous metadata search sees the library: OK"
+          ME_ANON=$(curl -fsS http://localhost:2283/api/users/me | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+          [ "$ME_ANON" = "$OWNER" ] || { echo "anonymous users/me is $ME_ANON, expected owner $OWNER"; exit 1; }
+          echo "public browse: anonymous identity is the library owner: OK"
+          THUMB_ANON=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:2283/api/assets/$ASSET/thumbnail?size=thumbnail")
+          [ "$THUMB_ANON" = "200" ] || { echo "anonymous thumbnail got $THUMB_ANON"; exit 1; }
+          echo "public browse: anonymous thumbnail serving: OK"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:2283/api/albums -H 'Content-Type: application/json' -d '{"albumName":"anon-write"}')
+          [ "$CODE" = "401" ] || { echo "anonymous POST /albums got $CODE, expected 401"; exit 1; }
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:2283/api/admin/config)
+          [ "$CODE" = "401" ] || { echo "anonymous GET /admin/config got $CODE, expected 401 (admin-only)"; exit 1; }
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -H 'Cookie: immich_access_token=stale-cookie' "http://localhost:2283/api/timeline/buckets?from=2000-01-01T00:00:00.000Z")
+          [ "$CODE" = "401" ] || { echo "stale-cookie timeline GET got $CODE, expected 401 (no silent downgrade)"; exit 1; }
+          echo "public browse: anonymous writes/admin/stale-session stay 401: OK"
+
           # Database backup gate: the online VACUUM INTO pipeline must produce
           # a gzip-valid snapshot visible in the admin API (daily cron default).
           # Wait for the job's completion log line before touching the file:

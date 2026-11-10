@@ -31,6 +31,7 @@ import {
 } from '@mdi/js';
 import { type MessageFormatter } from 'svelte-i18n';
 import { goto } from '$app/navigation';
+import { BROWSE_ONLY } from '$lib/fork';
 import { authManager } from '$lib/managers/auth-manager.svelte';
 import { eventManager } from '$lib/managers/event-manager.svelte';
 import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
@@ -157,6 +158,7 @@ export const getAlbumAssetsActions = ($t: MessageFormatter, album: AlbumResponse
     title: $t('select_from_computer'),
     description: $t('album_upload_assets'),
     icon: mdiUpload,
+    $if: () => !BROWSE_ONLY,
     onAction: () => void openFileUploadDialog({ albumId: album.id }),
   };
 

@@ -20,9 +20,19 @@ class AuthManager {
 
   #user = $state<UserAdminResponseDto>();
   #preferences = $state<UserPreferencesResponseDto>();
+  #publicBrowse = $state(false);
 
   get authenticated() {
     return !!(this.#user && this.#preferences);
+  }
+
+  /**
+   * Fork feature: true when the gallery was opened without a session cookie
+   * and the server served the API anonymously (public LAN browse). Write
+   * affordances must not be offered in this mode.
+   */
+  get publicBrowse() {
+    return this.#publicBrowse;
   }
 
   get user() {
@@ -53,10 +63,29 @@ class AuthManager {
     }
 
     if (!this.#hasAuthCookie()) {
+      await this.#loadPublicBrowse();
       return;
     }
 
     return this.refresh();
+  }
+
+  /**
+   * Fork feature (server/src/utils/public-browse.ts): with no session cookie,
+   * probe the API anonymously. A public-browse server answers as the library
+   * owner and the gallery opens straight from the site root; any 401 keeps
+   * the regular login gate untouched.
+   */
+  async #loadPublicBrowse() {
+    try {
+      const [user, preferences] = await Promise.all([getMyUser(), getMyPreferences()]);
+      this.#user = user;
+      this.#preferences = preferences;
+      this.#publicBrowse = true;
+      eventManager.emit('AuthUserLoaded', user);
+    } catch {
+      // not public: authenticate() redirects to the login page as before
+    }
   }
 
   async refresh() {
@@ -116,6 +145,7 @@ class AuthManager {
   reset() {
     this.#user = undefined;
     this.#preferences = undefined;
+    this.#publicBrowse = false;
   }
 
   #hasAuthCookie() {

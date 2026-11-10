@@ -39,19 +39,21 @@
   >
     <div class="relative">
       <UserAvatar user={authManager.user} size="xl" />
-      <div class="absolute inset-e-0 bottom-0 size-6 rounded-full">
-        <IconButton
-          color="primary"
-          icon={mdiPencil}
-          aria-label={$t('edit_avatar')}
-          size="tiny"
-          shape="round"
-          onclick={async () => {
-            onClose?.();
-            await modalManager.show(AvatarEditModal);
-          }}
-        />
-      </div>
+      {#if !authManager.publicBrowse}
+        <div class="absolute inset-e-0 bottom-0 size-6 rounded-full">
+          <IconButton
+            color="primary"
+            icon={mdiPencil}
+            aria-label={$t('edit_avatar')}
+            size="tiny"
+            shape="round"
+            onclick={async () => {
+              onClose?.();
+              await modalManager.show(AvatarEditModal);
+            }}
+          />
+        </div>
+      {/if}
     </div>
     <div>
       <p class="text-center text-lg font-medium text-primary">
@@ -61,21 +63,23 @@
     </div>
 
     <div class="flex flex-col gap-1">
-      <Button
-        href={Route.userSettings()}
-        onclick={onClose}
-        size="small"
-        color="secondary"
-        variant="ghost"
-        shape="round"
-        class="border hover:bg-immich-primary/10 dark:border-immich-dark-gray dark:bg-gray-500 dark:text-white dark:hover:bg-immich-dark-primary/50"
-      >
-        <div class="flex place-content-center place-items-center gap-2 px-2 text-center">
-          <Icon icon={mdiCog} size="18" aria-hidden />
-          {$t('account_settings')}
-        </div>
-      </Button>
-      {#if authManager.user.isAdmin}
+      {#if !authManager.publicBrowse}
+        <Button
+          href={Route.userSettings()}
+          onclick={onClose}
+          size="small"
+          color="secondary"
+          variant="ghost"
+          shape="round"
+          class="border hover:bg-immich-primary/10 dark:border-immich-dark-gray dark:bg-gray-500 dark:text-white dark:hover:bg-immich-dark-primary/50"
+        >
+          <div class="flex place-content-center place-items-center gap-2 px-2 text-center">
+            <Icon icon={mdiCog} size="18" aria-hidden />
+            {$t('account_settings')}
+          </div>
+        </Button>
+      {/if}
+      {#if authManager.user.isAdmin && !authManager.publicBrowse}
         <Button
           href={Route.systemSettings()}
           onclick={onClose}
@@ -96,13 +100,15 @@
   </div>
 
   <div class="mb-4 flex flex-col">
-    <Button
-      class="m-1 mx-4 rounded-none rounded-b-3xl bg-white p-3 dark:bg-immich-dark-primary/10"
-      href={Route.logout()}
-      leadingIcon={mdiLogout}
-      variant="ghost"
-      color="secondary">{$t('sign_out')}</Button
-    >
+    {#if !authManager.publicBrowse}
+      <Button
+        class="m-1 mx-4 rounded-none rounded-b-3xl bg-white p-3 dark:bg-immich-dark-primary/10"
+        href={Route.logout()}
+        leadingIcon={mdiLogout}
+        variant="ghost"
+        color="secondary">{$t('sign_out')}</Button
+      >
+    {/if}
 
     <button
       type="button"

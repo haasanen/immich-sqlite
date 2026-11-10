@@ -29,6 +29,7 @@ import { BaseService } from 'src/services/base.service.js';
 import { isGranted } from 'src/utils/access.js';
 import { HumanReadableSize } from 'src/utils/bytes.js';
 import { generateProfileImage } from 'src/utils/profile-image.js';
+import { isPublicBrowse, isPublicBrowseRead } from 'src/utils/public-browse.js';
 import { getUserAgentDetails } from 'src/utils/request.js';
 
 export interface LoginDetails {
@@ -61,6 +62,7 @@ export type ValidateRequest = {
     /** `false` explicitly means no permission is required, which otherwise defaults to `all` */
     permission?: Permission | false;
     uri: string;
+    method?: string;
   };
 };
 
@@ -222,7 +224,19 @@ export class AuthService extends BaseService {
   }
 
   async authenticate({ headers, queryParams, metadata }: ValidateRequest): Promise<AuthDto> {
-    const authDto = await this.validate({ headers, queryParams });
+    let authDto: AuthDto;
+    try {
+      authDto = await this.validate({ headers, queryParams });
+    } catch (error) {
+      if (!(error instanceof UnauthorizedException)) {
+        throw error;
+      }
+      const publicBrowseAuth = await this.tryPublicBrowse({ headers, queryParams }, metadata);
+      if (!publicBrowseAuth) {
+        throw error;
+      }
+      authDto = publicBrowseAuth;
+    }
     const { adminRoute, sharedLinkRoute, uri } = metadata;
     const requestedPermission = metadata.permission ?? Permission.All;
 
@@ -245,6 +259,47 @@ export class AuthService extends BaseService {
     }
 
     return authDto;
+  }
+
+  /**
+   * Fork feature (src/utils/public-browse.ts): serve anonymous read requests
+   * as the library owner so the web root opens straight into the gallery.
+   * Returns null to keep the 401 whenever the request is not eligible.
+   */
+  private async tryPublicBrowse(
+    { headers, queryParams }: { headers: IncomingHttpHeaders; queryParams: Record<string, string> },
+    metadata: ValidateRequest['metadata'],
+  ): Promise<AuthDto | null> {
+    if (!isPublicBrowse() || metadata.adminRoute || !isPublicBrowseRead(metadata.method, metadata.uri)) {
+      return null;
+    }
+
+    const credential =
+      headers[ImmichHeader.SharedLinkKey] ||
+      queryParams[ImmichQuery.SharedLinkKey] ||
+      headers[ImmichHeader.SharedLinkSlug] ||
+      queryParams[ImmichQuery.SharedLinkSlug] ||
+      headers[ImmichHeader.UserToken] ||
+      headers[ImmichHeader.SessionToken] ||
+      queryParams[ImmichQuery.SessionKey] ||
+      this.getBearerToken(headers) ||
+      this.getCookieToken(headers) ||
+      headers[ImmichHeader.ApiKey] ||
+      queryParams[ImmichQuery.ApiKey];
+
+    if (credential) {
+      // a bad or expired credential must reach the login screen instead of
+      // silently downgrading the visitor to the anonymous browse persona
+      return null;
+    }
+
+    const user = await this.userRepository.getAdmin();
+    if (!user) {
+      // no owner exists yet: this server is still in the setup flow
+      return null;
+    }
+
+    return { user };
   }
 
   private async validate({ headers, queryParams }: Omit<ValidateRequest, 'metadata'>): Promise<AuthDto> {

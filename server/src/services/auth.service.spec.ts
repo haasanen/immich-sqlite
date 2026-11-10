@@ -345,6 +345,94 @@ describe(AuthService.name, () => {
     });
   });
 
+  describe('authenticate - fork public browse', () => {
+    // product build: the public-browse gate is unconditional (see
+    // src/utils/public-browse.ts); NODE_ENV is restored after each case
+    const savedNodeEnv = process.env.NODE_ENV;
+    beforeEach(() => {
+      process.env.NODE_ENV = 'production';
+    });
+    afterEach(() => {
+      process.env.NODE_ENV = savedNodeEnv;
+    });
+
+    it('should serve anonymous reads as the admin user', async () => {
+      const admin = UserFactory.create({ isAdmin: true });
+      mocks.user.getAdmin.mockResolvedValue(admin);
+
+      const auth = await sut.authenticate({
+        headers: {},
+        queryParams: {},
+        metadata: { adminRoute: false, sharedLinkRoute: false, uri: '/api/timeline/buckets', method: 'GET' },
+      });
+
+      expect(auth.user.id).toEqual(admin.id);
+      expect(auth.session).toBeUndefined();
+    });
+
+    it('should serve read-scoped POST search families', async () => {
+      const admin = UserFactory.create({ isAdmin: true });
+      mocks.user.getAdmin.mockResolvedValue(admin);
+
+      const auth = await sut.authenticate({
+        headers: {},
+        queryParams: {},
+        metadata: { adminRoute: false, sharedLinkRoute: false, uri: '/api/search/metadata', method: 'POST' },
+      });
+
+      expect(auth.user.id).toEqual(admin.id);
+    });
+
+    it('should keep anonymous mutations unauthorized', async () => {
+      mocks.user.getAdmin.mockResolvedValue(UserFactory.create({ isAdmin: true }));
+
+      await expect(
+        sut.authenticate({
+          headers: {},
+          queryParams: {},
+          metadata: { adminRoute: false, sharedLinkRoute: false, uri: '/api/albums', method: 'POST' },
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('should not serve admin routes anonymously', async () => {
+      mocks.user.getAdmin.mockResolvedValue(UserFactory.create({ isAdmin: true }));
+
+      await expect(
+        sut.authenticate({
+          headers: {},
+          queryParams: {},
+          metadata: { adminRoute: true, sharedLinkRoute: false, uri: '/api/users', method: 'GET' },
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('should not downgrade a bad credential to public browse', async () => {
+      mocks.user.getAdmin.mockResolvedValue(UserFactory.create({ isAdmin: true }));
+      mocks.session.getByToken.mockResolvedValue(void 0);
+
+      await expect(
+        sut.authenticate({
+          headers: { cookie: 'immich_access_token=expired-token' },
+          queryParams: {},
+          metadata: { adminRoute: false, sharedLinkRoute: false, uri: '/api/timeline/buckets', method: 'GET' },
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('should keep 401 during setup when no admin exists', async () => {
+      mocks.user.getAdmin.mockResolvedValue(void 0);
+
+      await expect(
+        sut.authenticate({
+          headers: {},
+          queryParams: {},
+          metadata: { adminRoute: false, sharedLinkRoute: false, uri: '/api/timeline/buckets', method: 'GET' },
+        }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
   describe('validate - socket connections', () => {
     it('should throw when token is not provided', async () => {
       await expect(
