@@ -58,7 +58,7 @@ jobs:
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - id: token
-        uses: immich-app/devtools/actions/create-workflow-token@df46d635b905e618b88fc4c95baa920aeb30b309 # create-workflow-token-action-v3.0.1
+        uses: immich-app/devtools/actions/create-workflow-token@create-workflow-token-action-v3.0.1
         with:
           client-id: ${{ secrets.PUSH_O_MATIC_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_O_MATIC_APP_KEY }}
@@ -66,7 +66,7 @@ jobs:
 
       - name: Check what should run
         id: check
-        uses: immich-app/devtools/actions/pre-job@75493d49052d536863fc96100086782c5279b145 # pre-job-action-v2.1.1
+        uses: immich-app/devtools/actions/pre-job@pre-job-action-v2.1.1
         with:
           github-token: ${{ steps.token.outputs.token }}
           filters: |
@@ -89,21 +89,21 @@ jobs:
 
     steps:
       - id: token
-        uses: immich-app/devtools/actions/create-workflow-token@df46d635b905e618b88fc4c95baa920aeb30b309 # create-workflow-token-action-v3.0.1
+        uses: immich-app/devtools/actions/create-workflow-token@create-workflow-token-action-v3.0.1
         with:
           client-id: ${{ secrets.PUSH_O_MATIC_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_O_MATIC_APP_KEY }}
           permission-contents: read
           permission-pull-requests: write
 
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
           token: ${{ steps.token.outputs.token }}
 
       - name: Setup Mise
-        uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8 # use-mise-action-v3.2.1
+        uses: immich-app/devtools/actions/use-mise@use-mise-action-v3.2.1
         with:
           github_token: ${{ steps.token.outputs.token }}
           working_directory: ./mobile
@@ -115,14 +115,14 @@ jobs:
         working-directory: ./mobile
         run: printf "%s" $KEY_JKS | base64 -d > android/key.jks
 
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: actions/setup-java@v5.7.0
         with:
           distribution: 'zulu'
           java-version: '17'
 
       - name: Restore Gradle Cache
         id: cache-gradle-restore
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: |
             ~/.gradle/caches
@@ -132,7 +132,7 @@ jobs:
           key: build-mobile-gradle-${{ runner.os }}-main
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@v4.0.1
         with:
           packages: ''
 
@@ -159,14 +159,14 @@ jobs:
 
       - name: Publish Android Artifact
         id: upload-apk
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: release-apk-signed
           path: mobile/build/app/outputs/flutter-apk/*.apk
 
       - name: Comment APK download link on PR
         if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
-        uses: immich-app/devtools/actions/sticky-comment@0135acd12ad9f3369b94a2aa3c0ae8c835a4e926 # sticky-comment-action-v1.0.0
+        uses: immich-app/devtools/actions/sticky-comment@sticky-comment-action-v1.0.0
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           APK_URL: ${{ steps.upload-apk.outputs.artifact-url }}
@@ -187,7 +187,7 @@ jobs:
 
       - name: Save Gradle Cache
         id: cache-gradle-save
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/save@v6.1.0
         if: github.ref == 'refs/heads/main'
         with:
           path: |
@@ -208,7 +208,7 @@ jobs:
 
     steps:
       - id: token
-        uses: immich-app/devtools/actions/create-workflow-token@df46d635b905e618b88fc4c95baa920aeb30b309 # create-workflow-token-action-v3.0.1
+        uses: immich-app/devtools/actions/create-workflow-token@create-workflow-token-action-v3.0.1
         with:
           client-id: ${{ secrets.PUSH_O_MATIC_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_O_MATIC_APP_KEY }}
@@ -218,19 +218,19 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_27.1.app/Contents/Developer
 
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
 
       - name: Setup Mise
-        uses: immich-app/devtools/actions/use-mise@06a9ef925332c91be647d6256642b86b398592c8 # use-mise-action-v3.2.1
+        uses: immich-app/devtools/actions/use-mise@use-mise-action-v3.2.1
         with:
           github_token: ${{ steps.token.outputs.token }}
           working_directory: ./mobile
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
+        uses: ruby/setup-ruby@v1.323.0
         with:
           ruby-version: '3.4'
           bundler-cache: true # zizmor: ignore[cache-poisoning] release branches cannot read caches written by pull requests
@@ -310,7 +310,7 @@ jobs:
           security delete-keychain build.keychain || true
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ios-release-ipa
           path: mobile/ios/Runner.ipa

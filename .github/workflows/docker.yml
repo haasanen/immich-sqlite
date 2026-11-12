@@ -29,7 +29,7 @@ jobs:
       highest-in-line: ${{ steps.scope.outputs.highest-in-line }}
     steps:
       - id: token
-        uses: immich-app/devtools/actions/create-workflow-token@df46d635b905e618b88fc4c95baa920aeb30b309 # create-workflow-token-action-v3.0.1
+        uses: immich-app/devtools/actions/create-workflow-token@create-workflow-token-action-v3.0.1
         with:
           client-id: ${{ secrets.PUSH_O_MATIC_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_O_MATIC_APP_KEY }}
@@ -37,7 +37,7 @@ jobs:
 
       - name: Check what should run
         id: check
-        uses: immich-app/devtools/actions/pre-job@75493d49052d536863fc96100086782c5279b145 # pre-job-action-v2.1.1
+        uses: immich-app/devtools/actions/pre-job@pre-job-action-v2.1.1
         with:
           github-token: ${{ steps.token.outputs.token }}
           filters: |
@@ -107,7 +107,7 @@ jobs:
             runner-mapping: '{"linux/amd64": "pokedex-large"}'
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -217,21 +217,21 @@ jobs:
       SUFFIX: ${{ matrix.suffixes }}
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        uses: docker/login-action@v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Generate docker image tags
         id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        uses: docker/metadata-action@v6.2.0
         with:
           flavor: |
             latest=false
@@ -256,7 +256,7 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - uses: immich-app/devtools/actions/success-check@81113db03f6d743efee81e0058c0b43f6cd6f36d # success-check-action-v0.0.6
+      - uses: immich-app/devtools/actions/success-check@success-check-action-v0.0.6
         with:
           needs: ${{ toJSON(needs) }}
 
@@ -267,6 +267,6 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - uses: immich-app/devtools/actions/success-check@81113db03f6d743efee81e0058c0b43f6cd6f36d # success-check-action-v0.0.6
+      - uses: immich-app/devtools/actions/success-check@success-check-action-v0.0.6
         with:
           needs: ${{ toJSON(needs) }}

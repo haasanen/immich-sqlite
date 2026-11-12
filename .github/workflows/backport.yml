@@ -16,7 +16,7 @@ jobs:
     permissions: {}
     steps:
       - id: token
-        uses: immich-app/devtools/actions/create-workflow-token@df46d635b905e618b88fc4c95baa920aeb30b309 # create-workflow-token-action-v3.0.1
+        uses: immich-app/devtools/actions/create-workflow-token@create-workflow-token-action-v3.0.1
         with:
           client-id: ${{ secrets.PUSH_O_MATIC_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_O_MATIC_APP_KEY }}
@@ -25,13 +25,13 @@ jobs:
           permission-workflows: write
 
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           token: ${{ steps.token.outputs.token }}
           persist-credentials: true
 
       - name: Create backport pull requests
-        uses: korthout/backport-action@2e830a1d0b8269505846ddd407a70876913ad1f8 # v4.6.0
+        uses: korthout/backport-action@v4.6.0
         with:
           github_token: ${{ steps.token.outputs.token }}
           label_pattern: '^backport:(release/.+)$'
